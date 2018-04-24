@@ -44,3 +44,7 @@ GPL. Please refer to the LICENSE file for detailed information.
 Patches should be submitted to the ffmpeg-devel mailing list using
 `git format-patch` or `git send-email`. Github pull requests should be
 avoided because they are not part of our review process and will be ignored.
+
+## Building for Eluvio
+
+./configure --enable-shared --enable-pthreads --enable-version3 --enable-hardcoded-tables --enable-avresample --cc=clang --host-cflags=-fPIC --host-ldflags= --extra-cflags=-fPIC --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libxvid --enable-opencl --disable-lzma
