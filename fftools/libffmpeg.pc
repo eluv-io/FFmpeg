@@ -1,0 +1,14 @@
+prefix=INSTALL_LOC
+exec_prefix=${prefix}
+libdir=INSTALL_LOC/lib
+includedir=INSTALL_LOC/include
+
+Name: libffmpeg
+Description: FFmpeg library wrapper
+Version: 58.19.100
+Requires: 
+Requires.private: libswresample >= 3.2.100, libavutil >= 56.15.100
+Conflicts:
+Libs: -L${libdir}  -lffmpeg 
+Libs.private: -pthread -lm 
+Cflags: -I${includedir}
