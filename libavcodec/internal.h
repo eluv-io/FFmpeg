@@ -83,7 +83,7 @@
 #define FF_QSCALE_TYPE_H264  2
 #define FF_QSCALE_TYPE_VP56  3
 
-#define FF_SANE_NB_CHANNELS 64U
+#define FF_SANE_NB_CHANNELS 256U
 
 #define FF_SIGNBIT(x) ((x) >> CHAR_BIT * sizeof(x) - 1)
 
@@ -403,6 +403,18 @@ int ff_alloc_a53_sei(const AVFrame *frame, size_t prefix_len,
  * bits per pixel.
  */
 int64_t ff_guess_coded_bitrate(AVCodecContext *avctx);
+
+/**
+ * Check if a value is in the list. If not, return the default value
+ *
+ * @param ctx                Context for the log msg
+ * @param val_name           Name of the checked value, for log msg
+ * @param array_valid_values Array of valid int, ended with INT_MAX
+ * @param default_value      Value return if checked value is not in the array
+ * @return                   Value or default_value.
+ */
+int ff_int_from_list_or_default(void *ctx, const char * val_name, int val,
+                                const int * array_valid_values, int default_value);
 
 #if defined(_WIN32) && CONFIG_SHARED && !defined(BUILDING_avcodec)
 #    define av_export_avcodec __declspec(dllimport)

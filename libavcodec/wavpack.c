@@ -85,7 +85,7 @@ typedef struct WavpackContext {
 
 #define LEVEL_DECAY(a)  (((a) + 0x80) >> 8)
 
-static av_always_inline int get_tail(GetBitContext *gb, int k)
+static av_always_inline unsigned get_tail(GetBitContext *gb, int k)
 {
     int p, e, res;
 
@@ -452,7 +452,7 @@ static inline int wv_unpack_stereo(WavpackFrameContext *s, GetBitContext *gb,
                 if (type != AV_SAMPLE_FMT_S16P)
                     R2 = R + ((s->decorr[i].weightB * (int64_t)L2 + 512) >> 10);
                 else
-                    R2 = R + ((int)(s->decorr[i].weightB * (unsigned)L2 + 512) >> 10);
+                    R2 = R + (unsigned)((int)(s->decorr[i].weightB * (unsigned)L2 + 512) >> 10);
                 UPDATE_WEIGHT_CLIP(s->decorr[i].weightB, s->decorr[i].delta, L2, R);
                 R                        = R2;
                 s->decorr[i].samplesA[0] = R;
@@ -940,13 +940,23 @@ static int wavpack_decode_block(AVCodecContext *avctx, int block_no,
             case 3:
                 chmask = bytestream2_get_le32(&gb);
                 break;
+            case 4:
+                size = bytestream2_get_byte(&gb);
+                chan  |= (bytestream2_get_byte(&gb) & 0xF) << 8;
+                chan  += 1;
+                if (avctx->channels != chan)
+                    av_log(avctx, AV_LOG_WARNING, "%i channels signalled"
+                           " instead of %i.\n", chan, avctx->channels);
+                chmask = bytestream2_get_le24(&gb);
+                break;
             case 5:
                 size = bytestream2_get_byte(&gb);
-                if (avctx->channels != size)
-                    av_log(avctx, AV_LOG_WARNING, "%i channels signalled"
-                           " instead of %i.\n", size, avctx->channels);
                 chan  |= (bytestream2_get_byte(&gb) & 0xF) << 8;
-                chmask = bytestream2_get_le16(&gb);
+                chan  += 1;
+                if (avctx->channels != chan)
+                    av_log(avctx, AV_LOG_WARNING, "%i channels signalled"
+                           " instead of %i.\n", chan, avctx->channels);
+                chmask = bytestream2_get_le32(&gb);
                 break;
             default:
                 av_log(avctx, AV_LOG_ERROR, "Invalid channel info size %d\n",

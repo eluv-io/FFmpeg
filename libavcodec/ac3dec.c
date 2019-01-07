@@ -106,25 +106,6 @@ static const uint8_t ac3_default_coeffs[8][5][2] = {
     { { 2, 7 }, { 5, 5 }, { 7, 2 }, { 6, 7 }, { 7, 6 }, },
 };
 
-static const uint64_t custom_channel_map_locations[16][2] = {
-    { 1, AV_CH_FRONT_LEFT },
-    { 1, AV_CH_FRONT_CENTER },
-    { 1, AV_CH_FRONT_RIGHT },
-    { 1, AV_CH_SIDE_LEFT },
-    { 1, AV_CH_SIDE_RIGHT },
-    { 0, AV_CH_FRONT_LEFT_OF_CENTER | AV_CH_FRONT_RIGHT_OF_CENTER },
-    { 0, AV_CH_BACK_LEFT | AV_CH_BACK_RIGHT },
-    { 0, AV_CH_BACK_CENTER },
-    { 0, AV_CH_TOP_CENTER },
-    { 0, AV_CH_SURROUND_DIRECT_LEFT | AV_CH_SURROUND_DIRECT_RIGHT },
-    { 0, AV_CH_WIDE_LEFT | AV_CH_WIDE_RIGHT },
-    { 0, AV_CH_TOP_FRONT_LEFT | AV_CH_TOP_FRONT_RIGHT},
-    { 0, AV_CH_TOP_FRONT_CENTER },
-    { 0, AV_CH_TOP_BACK_LEFT | AV_CH_TOP_BACK_RIGHT },
-    { 0, AV_CH_LOW_FREQUENCY_2 },
-    { 1, AV_CH_LOW_FREQUENCY },
-};
-
 /**
  * Symmetrical Dequantization
  * reference: Section 7.3.3 Expansion of Mantissas for Symmetrical Quantization
@@ -471,7 +452,7 @@ static int decode_exponents(AC3DecodeContext *s,
         prevexp += dexp[i] - 2;
         if (prevexp > 24U) {
             av_log(s->avctx, AV_LOG_ERROR, "exponent %d is out-of-range\n", prevexp);
-            return -1;
+            return AVERROR_INVALIDDATA;
         }
         switch (group_size) {
         case 4: dexps[j++] = prevexp;
@@ -1486,7 +1467,7 @@ static int ac3_decode_frame(AVCodecContext * avctx, void *data,
     int buf_size, full_buf_size = avpkt->size;
     AC3DecodeContext *s = avctx->priv_data;
     int blk, ch, err, offset, ret;
-    int got_independent_frame = 0;
+    int skip = 0, got_independent_frame = 0;
     const uint8_t *channel_map;
     uint8_t extended_channel_map[EAC3_MAX_CHANNELS];
     const SHORTFLOAT *output[AC3_MAX_CHANNELS];
@@ -1496,6 +1477,14 @@ static int ac3_decode_frame(AVCodecContext * avctx, void *data,
     s->superframe_size = 0;
 
     buf_size = full_buf_size;
+    while (buf_size > 2) {
+        if (AV_RB16(buf) != 0x770B && AV_RL16(buf) != 0x770B) {
+            buf += 1;
+            buf_size -= 1;
+            continue;
+        }
+        break;
+    }
     /* copy input buffer to decoder context to avoid reading past the end
        of the buffer, which can be caused by a damaged input stream. */
     if (buf_size >= 2 && AV_RB16(buf) == 0x770B) {
@@ -1656,6 +1645,11 @@ dependent_frame:
         AC3HeaderInfo hdr;
         int err;
 
+        if (buf_size - s->frame_size <= 16) {
+            skip = buf_size - s->frame_size;
+            goto skip;
+        }
+
         if ((ret = init_get_bits8(&s->gbc, buf + s->frame_size, buf_size - s->frame_size)) < 0)
             return ret;
 
@@ -1676,6 +1670,7 @@ dependent_frame:
             }
         }
     }
+skip:
 
     frame->decode_error_flags = err ? FF_DECODE_ERROR_INVALID_BITSTREAM : 0;
 
@@ -1690,6 +1685,7 @@ dependent_frame:
 
     if (s->frame_type == EAC3_FRAME_TYPE_DEPENDENT) {
         uint64_t ich_layout = avpriv_ac3_channel_layout_tab[s->prev_output_mode & ~AC3_OUTPUT_LFEON];
+        int channel_map_size = ff_ac3_channels_tab[s->output_mode & ~AC3_OUTPUT_LFEON] + s->lfe_on;
         uint64_t channel_layout;
         int extend = 0;
 
@@ -1699,8 +1695,13 @@ dependent_frame:
         channel_layout = ich_layout;
         for (ch = 0; ch < 16; ch++) {
             if (s->channel_map & (1 << (EAC3_MAX_CHANNELS - ch - 1))) {
-                channel_layout |= custom_channel_map_locations[ch][1];
+                channel_layout |= ff_eac3_custom_channel_map_locations[ch][1];
             }
+        }
+        if (av_get_channel_layout_nb_channels(channel_layout) > EAC3_MAX_CHANNELS) {
+            av_log(avctx, AV_LOG_ERROR, "Too many channels (%d) coded\n",
+                   av_get_channel_layout_nb_channels(channel_layout));
+            return AVERROR_INVALIDDATA;
         }
 
         avctx->channel_layout = channel_layout;
@@ -1708,21 +1709,27 @@ dependent_frame:
 
         for (ch = 0; ch < EAC3_MAX_CHANNELS; ch++) {
             if (s->channel_map & (1 << (EAC3_MAX_CHANNELS - ch - 1))) {
-                if (custom_channel_map_locations[ch][0]) {
+                if (ff_eac3_custom_channel_map_locations[ch][0]) {
                     int index = av_get_channel_layout_channel_index(channel_layout,
-                                                                    custom_channel_map_locations[ch][1]);
+                                                                    ff_eac3_custom_channel_map_locations[ch][1]);
                     if (index < 0)
                         return AVERROR_INVALIDDATA;
+                    if (extend >= channel_map_size)
+                        return AVERROR_INVALIDDATA;
+
                     extended_channel_map[index] = offset + channel_map[extend++];
                 } else {
                     int i;
 
                     for (i = 0; i < 64; i++) {
-                        if ((1LL << i) & custom_channel_map_locations[ch][1]) {
+                        if ((1ULL << i) & ff_eac3_custom_channel_map_locations[ch][1]) {
                             int index = av_get_channel_layout_channel_index(channel_layout,
-                                                                            1LL << i);
+                                                                            1ULL << i);
                             if (index < 0)
                                 return AVERROR_INVALIDDATA;
+                            if (extend >= channel_map_size)
+                                return AVERROR_INVALIDDATA;
+
                             extended_channel_map[index] = offset + channel_map[extend++];
                         }
                     }
@@ -1738,7 +1745,9 @@ dependent_frame:
 
     for (ch = 0; ch < avctx->channels; ch++) {
         int map = extended_channel_map[ch];
-        memcpy((SHORTFLOAT *)frame->data[ch], s->output_buffer[map],
+        av_assert0(ch>=AV_NUM_DATA_POINTERS || frame->extended_data[ch] == frame->data[ch]);
+        memcpy((SHORTFLOAT *)frame->extended_data[ch],
+               s->output_buffer[map],
                s->num_blocks * AC3_BLOCK_SIZE * sizeof(SHORTFLOAT));
     }
 
@@ -1800,7 +1809,10 @@ dependent_frame:
 
     *got_frame_ptr = 1;
 
-    return FFMIN(full_buf_size, s->superframe_size);
+    if (!s->superframe_size)
+        return FFMIN(full_buf_size, s->frame_size + skip);
+
+    return FFMIN(full_buf_size, s->superframe_size + skip);
 }
 
 /**

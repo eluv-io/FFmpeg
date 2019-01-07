@@ -2371,11 +2371,11 @@ static int read_interval_packets(WriterContext *w, InputFile *ifile,
         goto end;
     }
     while (!av_read_frame(fmt_ctx, &pkt)) {
-        if (ifile->nb_streams > nb_streams) {
+        if (fmt_ctx->nb_streams > nb_streams) {
             REALLOCZ_ARRAY_STREAM(nb_streams_frames,  nb_streams, fmt_ctx->nb_streams);
             REALLOCZ_ARRAY_STREAM(nb_streams_packets, nb_streams, fmt_ctx->nb_streams);
             REALLOCZ_ARRAY_STREAM(selected_streams,   nb_streams, fmt_ctx->nb_streams);
-            nb_streams = ifile->nb_streams;
+            nb_streams = fmt_ctx->nb_streams;
         }
         if (selected_streams[pkt.stream_index]) {
             AVRational tb = ifile->streams[pkt.stream_index].st->time_base;
@@ -2646,20 +2646,20 @@ static int show_stream(WriterContext *w, AVFormatContext *fmt_ctx, int stream_id
     } while (0)
 
     if (do_show_stream_disposition) {
-    writer_print_section_header(w, in_program ? SECTION_ID_PROGRAM_STREAM_DISPOSITION : SECTION_ID_STREAM_DISPOSITION);
-    PRINT_DISPOSITION(DEFAULT,          "default");
-    PRINT_DISPOSITION(DUB,              "dub");
-    PRINT_DISPOSITION(ORIGINAL,         "original");
-    PRINT_DISPOSITION(COMMENT,          "comment");
-    PRINT_DISPOSITION(LYRICS,           "lyrics");
-    PRINT_DISPOSITION(KARAOKE,          "karaoke");
-    PRINT_DISPOSITION(FORCED,           "forced");
-    PRINT_DISPOSITION(HEARING_IMPAIRED, "hearing_impaired");
-    PRINT_DISPOSITION(VISUAL_IMPAIRED,  "visual_impaired");
-    PRINT_DISPOSITION(CLEAN_EFFECTS,    "clean_effects");
-    PRINT_DISPOSITION(ATTACHED_PIC,     "attached_pic");
-    PRINT_DISPOSITION(TIMED_THUMBNAILS, "timed_thumbnails");
-    writer_print_section_footer(w);
+        writer_print_section_header(w, in_program ? SECTION_ID_PROGRAM_STREAM_DISPOSITION : SECTION_ID_STREAM_DISPOSITION);
+        PRINT_DISPOSITION(DEFAULT,          "default");
+        PRINT_DISPOSITION(DUB,              "dub");
+        PRINT_DISPOSITION(ORIGINAL,         "original");
+        PRINT_DISPOSITION(COMMENT,          "comment");
+        PRINT_DISPOSITION(LYRICS,           "lyrics");
+        PRINT_DISPOSITION(KARAOKE,          "karaoke");
+        PRINT_DISPOSITION(FORCED,           "forced");
+        PRINT_DISPOSITION(HEARING_IMPAIRED, "hearing_impaired");
+        PRINT_DISPOSITION(VISUAL_IMPAIRED,  "visual_impaired");
+        PRINT_DISPOSITION(CLEAN_EFFECTS,    "clean_effects");
+        PRINT_DISPOSITION(ATTACHED_PIC,     "attached_pic");
+        PRINT_DISPOSITION(TIMED_THUMBNAILS, "timed_thumbnails");
+        writer_print_section_footer(w);
     }
 
     if (do_show_stream_tags)

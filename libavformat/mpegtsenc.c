@@ -1523,7 +1523,7 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
     int64_t dts = pkt->dts, pts = pkt->pts;
     int opus_samples = 0;
     int side_data_size;
-    char *side_data = NULL;
+    uint8_t *side_data = NULL;
     int stream_id = -1;
 
     side_data = av_packet_get_side_data(pkt,
@@ -1983,6 +1983,6 @@ AVOutputFormat ff_mpegts_muxer = {
     .write_trailer  = mpegts_write_end,
     .deinit         = mpegts_deinit,
     .check_bitstream = mpegts_check_bitstream,
-    .flags          = AVFMT_ALLOW_FLUSH | AVFMT_VARIABLE_FPS,
+    .flags          = AVFMT_ALLOW_FLUSH | AVFMT_VARIABLE_FPS | AVFMT_NODIMENSIONS,
     .priv_class     = &mpegts_muxer_class,
 };
