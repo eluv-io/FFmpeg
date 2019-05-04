@@ -1398,7 +1398,7 @@ static int dash_init(AVFormatContext *s)
                 av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov+skip_sidx", 0);
             else if (c->start_segment > 1) {
                 //av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov+frag_discont", 0);
-                av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov+frag_discont", 0);
+                av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov+frag_discont", 0);
             } else {
                 //av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov", 0);
                 av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov", 0);
