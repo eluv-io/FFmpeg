@@ -1302,6 +1302,7 @@ static int dash_init(AVFormatContext *s)
         AVStream *st;
         AVDictionary *opts = NULL;
         char filename[1024];
+        AVRational time_base;
 
         os->bit_rate = s->streams[i]->codecpar->bit_rate;
         if (!os->bit_rate) {
@@ -1431,7 +1432,18 @@ static int dash_init(AVFormatContext *s)
             av_dict_set_int(&opts, "dash_track_number", i + 1, 0);
             av_dict_set_int(&opts, "live", 1, 0);
         }
+        time_base = st->time_base;
+        /* avformat_init_output() might change stream time_base if time_base < 10000 */
         ret = avformat_init_output(ctx, &opts);
+        /*
+         * Basically the problem is when time_base < 10000, then ffmpeg doubles the timebase in a loop (in movenc.c)
+         * until it becomes bigger than 10000 (i.e 600 -> 19200).
+         * This change in the time_base causes a divide by zero in dash_flush() function.
+         * To avoid this situation, it is needed to rescale seg_duration_ts too.
+         */
+        if (time_base.den != st->time_base.den) {
+            c->seg_duration_ts *= st->time_base.den/(time_base.den*st->time_base.num);
+        }
         av_dict_free(&opts);
         if (ret < 0)
             return ret;
@@ -1739,11 +1751,19 @@ static int dash_flush(AVFormatContext *s, int final, int stream)
             }
         }
 
-        if (!os->muxer_overhead)
-            os->muxer_overhead = ((int64_t) (range_length - os->total_pkt_size) *
+        if (!os->muxer_overhead) {
+            if (av_rescale_q(os->max_pts - os->start_pts, st->time_base, AV_TIME_BASE_Q) != 0)
+                os->muxer_overhead = ((int64_t) (range_length - os->total_pkt_size) *
                                   8 * AV_TIME_BASE) /
                                  av_rescale_q(os->max_pts - os->start_pts,
                                               st->time_base, AV_TIME_BASE_Q);
+            else
+                /* This (else) should not happen anymore after rescaling seg_duration_ts.
+                 * But just to be on the safe side I will keep this.
+                 */
+                os->muxer_overhead = ((int64_t) (range_length - os->total_pkt_size) *
+                                  8 * AV_TIME_BASE) * st->time_base.num / st->time_base.den;
+        }
         os->total_pkt_size = 0;
 
         if (!os->bit_rate) {
