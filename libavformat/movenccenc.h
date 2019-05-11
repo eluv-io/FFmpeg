@@ -76,11 +76,13 @@ int ff_mov_cenc_avc_write_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx, 
 /**
  * Write the cenc atoms that should reside inside stbl
  */
-void ff_mov_cenc_write_stbl_atoms(MOVMuxCencContext* ctx, AVIOContext *pb);
+void ff_mov_cenc_write_stbl_atoms(MOVMuxCencContext* ctx, AVIOContext *pb, int64_t moof_offset);
 
 /**
  * Write the sinf atom, contained inside stsd
  */
 int ff_mov_cenc_write_sinf_tag(struct MOVTrack* track, AVIOContext *pb, uint8_t* kid);
+
+void ff_mov_cenc_reset_aux(MOVMuxCencContext* ctx);
 
 #endif /* AVFORMAT_MOVENCCENC_H */

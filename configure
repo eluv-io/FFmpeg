@@ -4541,6 +4541,10 @@ probe_cc(){
         _flags_filter=cparser_flags
     fi
 
+    # Debug:
+    #_cflags_speed='-O0'
+    #_cflags_size='-O0'
+
     eval ${pfx}_type=\$_type
     eval ${pfx}_ident=\$_ident
 }
@@ -4568,6 +4572,14 @@ add_cflags $_flags $_cflags
 cc_ldflags=$_ldflags
 set_ccvars CC
 set_ccvars CXX
+
+echo "cflags_filter: $cflags_filter"
+echo "cflags_speed: $cflags_speed"
+echo "cflags_size: $cflags_size"
+echo "cflags_noopt: $cflags_noopt"
+echo "_flags: $_flags"
+echo "cc_ldflags: $_ldflags"
+
 
 probe_cc hostcc "$host_cc"
 host_cflags_filter=$_flags_filter
@@ -6606,6 +6618,7 @@ if [ -z "$optflags" ]; then
         optflags=$cflags_noopt
     fi
 fi
+echo "optflags: $optflags"
 
 if [ -z "$nvccflags" ]; then
     nvccflags=$nvccflags_default

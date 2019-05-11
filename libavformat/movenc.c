@@ -2458,8 +2458,8 @@ static int mov_write_stbl_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContext
     mov_write_stsc_tag(pb, track);
     mov_write_stsz_tag(pb, track);
     mov_write_stco_tag(pb, track);
-    if (track->cenc.aes_ctr) {
-        ff_mov_cenc_write_stbl_atoms(&track->cenc, pb);
+    if (track->cenc.aes_ctr && !(mov->flags & FF_MOV_FLAG_FRAGMENT)) {
+        ff_mov_cenc_write_stbl_atoms(&track->cenc, pb, 0);
     }
     if (track->par->codec_id == AV_CODEC_ID_OPUS || track->par->codec_id == AV_CODEC_ID_AAC) {
         mov_preroll_write_stbl_atoms(pb, track);
@@ -3217,6 +3217,9 @@ static int mov_write_mvhd_tag(AVIOContext *pb, MOVMuxContext *mov)
     int version;
 
     for (i = 0; i < mov->nb_streams; i++) {
+        // Can do this if timescale 1000 (MOV_TIMESCALE) causes any problems -PT
+        // if (mov->tracks[i].timescale)
+        //     timescale = mov->tracks[i].timescale;
         if (mov->tracks[i].entry > 0 && mov->tracks[i].timescale) {
             int64_t max_track_len_temp = av_rescale_rnd(mov->tracks[i].track_duration,
                                                 MOV_TIMESCALE,
@@ -4430,6 +4433,10 @@ static int mov_write_traf_tag(AVIOContext *pb, MOVMuxContext *mov,
         }
     }
 
+    if (track->cenc.aes_ctr) {
+        ff_mov_cenc_write_stbl_atoms(&track->cenc, pb, moof_offset);
+    }
+
     return update_size(pb, pos);
 }
 
@@ -4762,6 +4769,7 @@ static int mov_write_ftyp_tag(AVIOContext *pb, AVFormatContext *s)
     else if (mov->mode == MODE_MP4)
         ffio_wfourcc(pb, "mp41");
 
+    // Comment out FF_MOV_FLAG_GLOBAL_SIDX to add dash to ftyp -PT
     if (mov->flags & FF_MOV_FLAG_DASH && mov->flags & FF_MOV_FLAG_GLOBAL_SIDX)
         ffio_wfourcc(pb, "dash");
 
@@ -5177,6 +5185,8 @@ static int mov_flush_fragment(AVFormatContext *s, int force)
 
         avio_write(s->pb, buf, buf_size);
         av_free(buf);
+
+        ff_mov_cenc_reset_aux(&track->cenc);
     }
 
     mov->mdat_size = 0;

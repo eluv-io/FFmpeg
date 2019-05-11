@@ -217,6 +217,14 @@ int ff_mov_cenc_avc_parse_nal_units(MOVMuxCencContext* ctx, AVIOContext *pb,
 
         auxiliary_info_add_subsample(ctx, 5, nal_end - nal_start - 1);
 
+        // * Spec recommends BytesOfProtectedData multiple of 16
+        // * Expose more of the NAL header? 
+        //  - PT
+        // int clear_size = nal_end - nal_start - 480;
+        // avio_write(pb, nal_start, clear_size);
+        // mov_cenc_write_encrypted(ctx, pb, nal_end - 480, 480);
+        // auxiliary_info_add_subsample(ctx, 4 + clear_size, 480);
+
         size += 4 + nal_end - nal_start;
         nal_start = nal_end;
     }
@@ -290,6 +298,7 @@ static int64_t update_size(AVIOContext *pb, int64_t pos)
 }
 
 static int mov_cenc_write_senc_tag(MOVMuxCencContext* ctx, AVIOContext *pb,
+                                   int64_t moof_offset,
                                    int64_t* auxiliary_info_offset)
 {
     int64_t pos = avio_tell(pb);
@@ -298,7 +307,7 @@ static int mov_cenc_write_senc_tag(MOVMuxCencContext* ctx, AVIOContext *pb,
     ffio_wfourcc(pb, "senc");
     avio_wb32(pb, ctx->use_subsamples ? 0x02 : 0); /* version & flags */
     avio_wb32(pb, ctx->auxiliary_info_entries); /* entry count */
-    *auxiliary_info_offset = avio_tell(pb);
+    *auxiliary_info_offset = avio_tell(pb) - moof_offset;
     avio_write(pb, ctx->auxiliary_info, ctx->auxiliary_info_size);
     return update_size(pb, pos);
 }
@@ -336,11 +345,11 @@ static int mov_cenc_write_saiz_tag(MOVMuxCencContext* ctx, AVIOContext *pb)
     return update_size(pb, pos);
 }
 
-void ff_mov_cenc_write_stbl_atoms(MOVMuxCencContext* ctx, AVIOContext *pb)
+void ff_mov_cenc_write_stbl_atoms(MOVMuxCencContext* ctx, AVIOContext *pb, int64_t moof_offset)
 {
     int64_t auxiliary_info_offset;
 
-    mov_cenc_write_senc_tag(ctx, pb, &auxiliary_info_offset);
+    mov_cenc_write_senc_tag(ctx, pb, moof_offset, &auxiliary_info_offset);
     mov_cenc_write_saio_tag(pb, auxiliary_info_offset);
     mov_cenc_write_saiz_tag(ctx, pb);
 }
@@ -412,4 +421,9 @@ int ff_mov_cenc_init(MOVMuxCencContext* ctx, uint8_t* encryption_key,
 void ff_mov_cenc_free(MOVMuxCencContext* ctx)
 {
     av_aes_ctr_free(ctx->aes_ctr);
+}
+
+void ff_mov_cenc_reset_aux(MOVMuxCencContext* ctx) {
+    ctx->auxiliary_info_size = 0;
+    ctx->auxiliary_info_entries = 0;
 }
