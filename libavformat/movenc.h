@@ -167,7 +167,10 @@ typedef struct MOVTrack {
 
 typedef enum {
     MOV_ENC_NONE = 0,
-    MOV_ENC_CENC_AES_CTR,
+    MOV_ENC_CENC,
+    MOV_ENC_CBC1,
+    MOV_ENC_CENS,
+    MOV_ENC_CBCS,
 } MOVEncryptionScheme;
 
 typedef enum {

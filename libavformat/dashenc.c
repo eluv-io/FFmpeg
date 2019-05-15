@@ -1468,7 +1468,6 @@ static int dash_init(AVFormatContext *s)
                 as->ambiguous_frame_rate = 1;
             }
             c->has_video = 1;
-
         }
 
         /* Calculate the seg_duration in time_base units */
@@ -1479,7 +1478,7 @@ static int dash_init(AVFormatContext *s)
         av_log(s, AV_LOG_DEBUG, "HAPPY seg_duration_ts=%lld mod=%lld\n", c->seg_duration_ts,
             c->seg_duration * s->streams[i]->time_base.den % (1000000 * s->streams[i]->time_base.num));
 #endif
-        av_log(s, AV_LOG_DEBUG, "seg_duration_ts=%ld \n", c->seg_duration_ts);
+        av_log(s, AV_LOG_DEBUG, "seg_duration_ts=%lld \n", c->seg_duration_ts);
 
         set_codec_str(s, st->codecpar, &st->avg_frame_rate, os->codec_str,
                       sizeof(os->codec_str));
@@ -2059,7 +2058,7 @@ static const AVOption options[] = {
     { "ignore_io_errors", "Ignore IO errors during open and write. Useful for long-duration runs with network output", OFFSET(ignore_io_errors), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
     { "lhls", "Enable Low-latency HLS(Experimental). Adds #EXT-X-PREFETCH tag with current segment's URI", OFFSET(lhls), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
     { "start_segment", "Specify the index of the first segment (which by default is 1)", OFFSET(start_segment), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, INT_MAX, E },
-    { "encryption_scheme", "Configures the Common Encryption scheme, allowed values are none, cenc-aes-ctr", OFFSET(encryption_scheme_str), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
+    { "encryption_scheme", "Configures the Common Encryption scheme, allowed values are none, cenc, cbc1, cens, cbcs", OFFSET(encryption_scheme_str), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "encryption_key", "The media encryption key (hex)", OFFSET(encryption_key), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "encryption_kid", "The media encryption key identifier (hex)", OFFSET(encryption_kid), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "hls_enc", "enable AES128 encryption support", OFFSET(aes_encrypt), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, E},
