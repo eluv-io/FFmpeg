@@ -6180,22 +6180,20 @@ static int mov_init(AVFormatContext *s)
         return AVERROR(ENOMEM);
 
     if (mov->encryption_scheme_str != NULL && strcmp(mov->encryption_scheme_str, "none") != 0) {
-        if (strcmp(mov->encryption_scheme_str, "cenc-aes-ctr") == 0) {
-            mov->encryption_scheme = MOV_ENC_CENC_AES_CTR;
-
+        if (strcmp(mov->encryption_scheme_str, "cenc") == 0) {
+            mov->encryption_scheme = MOV_ENC_CENC;
             if (mov->encryption_key_len != AES_CTR_KEY_SIZE) {
                 av_log(s, AV_LOG_ERROR, "Invalid encryption key len %d expected %d\n",
                     mov->encryption_key_len, AES_CTR_KEY_SIZE);
                 return AVERROR(EINVAL);
             }
-
             if (mov->encryption_kid_len != CENC_KID_SIZE) {
                 av_log(s, AV_LOG_ERROR, "Invalid encryption kid len %d expected %d\n",
                     mov->encryption_kid_len, CENC_KID_SIZE);
                 return AVERROR(EINVAL);
             }
         } else {
-            av_log(s, AV_LOG_ERROR, "unsupported encryption scheme %s\n",
+            av_log(s, AV_LOG_ERROR, "Unsupported encryption scheme %s\n",
                 mov->encryption_scheme_str);
             return AVERROR(EINVAL);
         }
@@ -6341,7 +6339,7 @@ static int mov_init(AVFormatContext *s)
 
         avpriv_set_pts_info(st, 64, 1, track->timescale);
 
-        if (mov->encryption_scheme == MOV_ENC_CENC_AES_CTR) {
+        if (mov->encryption_scheme == MOV_ENC_CENC) {
             ret = ff_mov_cenc_init(&track->cenc, mov->encryption_key,
                 track->par->codec_id == AV_CODEC_ID_H264, s->flags & AVFMT_FLAG_BITEXACT);
             if (ret)
