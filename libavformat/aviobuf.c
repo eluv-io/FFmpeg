@@ -578,8 +578,16 @@ static void fill_buffer(AVIOContext *s)
 
             s->checksum_ptr = dst = s->buffer;
         }
-        av_assert0(len >= s->orig_buffer_size);
-        len = s->orig_buffer_size;
+
+        // serban@eluv.io - test an alternative to assert
+        // av_assert0(len >= s->orig_buffer_size);
+        // len = s->orig_buffer_size;
+        if (len >= s->orig_buffer_size) {
+            len = s->orig_buffer_size;
+        } else {
+            av_log(s, AV_LOG_ERROR, "avio fill_buffer would assert len=%d orig_buffer_size=%d opaque=%p",
+                len, s->orig_buffer_size, s->opaque);
+        }
     }
 
     len = read_packet_wrapper(s, dst, len);
