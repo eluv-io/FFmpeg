@@ -1681,6 +1681,8 @@ static OutputStream *new_video_stream(OptionsContext *o, AVFormatContext *oc, in
 
     MATCH_PER_STREAM_OPT(filter_scripts, str, ost->filters_script, oc, st);
     MATCH_PER_STREAM_OPT(filters,        str, ost->filters,        oc, st);
+    if (o->nb_filters > 1)
+        av_log(NULL, AV_LOG_ERROR, "Only '-vf %s' read, ignoring remaining -vf options: Use ',' to separate filters\n", ost->filters);
 
     if (!ost->stream_copy) {
         const char *p = NULL;
@@ -1862,6 +1864,8 @@ static OutputStream *new_audio_stream(OptionsContext *o, AVFormatContext *oc, in
 
     MATCH_PER_STREAM_OPT(filter_scripts, str, ost->filters_script, oc, st);
     MATCH_PER_STREAM_OPT(filters,        str, ost->filters,        oc, st);
+    if (o->nb_filters > 1)
+        av_log(NULL, AV_LOG_ERROR, "Only '-af %s' read, ignoring remaining -af options: Use ',' to separate filters\n", ost->filters);
 
     if (!ost->stream_copy) {
         char *sample_fmt = NULL;
@@ -2194,7 +2198,8 @@ static int open_output_file(OptionsContext *o, const char *filename)
             for (i = 0; i < nb_input_streams; i++) {
                 int new_area;
                 ist = input_streams[i];
-                new_area = ist->st->codecpar->width * ist->st->codecpar->height + 100000000*!!ist->st->codec_info_nb_frames;
+                new_area = ist->st->codecpar->width * ist->st->codecpar->height + 100000000*!!ist->st->codec_info_nb_frames
+                           + 5000000*!!(ist->st->disposition & AV_DISPOSITION_DEFAULT);
                 if (ist->user_set_discard == AVDISCARD_ALL)
                     continue;
                 if((qcr!=MKTAG('A', 'P', 'I', 'C')) && (ist->st->disposition & AV_DISPOSITION_ATTACHED_PIC))
@@ -2217,7 +2222,8 @@ static int open_output_file(OptionsContext *o, const char *filename)
             for (i = 0; i < nb_input_streams; i++) {
                 int score;
                 ist = input_streams[i];
-                score = ist->st->codecpar->channels + 100000000*!!ist->st->codec_info_nb_frames;
+                score = ist->st->codecpar->channels + 100000000*!!ist->st->codec_info_nb_frames
+                        + 5000000*!!(ist->st->disposition & AV_DISPOSITION_DEFAULT);
                 if (ist->user_set_discard == AVDISCARD_ALL)
                     continue;
                 if (ist->st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO &&

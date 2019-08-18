@@ -418,9 +418,6 @@ static av_cold int decode_init(AVCodecContext *avctx)
         case 0x0F0:
             avctx->pix_fmt = AV_PIX_FMT_GRAY16;
             break;
-        case 0x170:
-            avctx->pix_fmt = AV_PIX_FMT_GRAY8A;
-            break;
         case 0x470:
             avctx->pix_fmt = AV_PIX_FMT_GBRP;
             break;
@@ -1255,6 +1252,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
         slice_height = AV_RL32(avpkt->data + buf_size - 8);
         nb_slices = AV_RL32(avpkt->data + buf_size - 12);
         if (nb_slices * 8LL + slices_info_offset > buf_size - 16 ||
+            s->chroma_v_shift ||
             slice_height <= 0 || nb_slices * (uint64_t)slice_height > height)
             return AVERROR_INVALIDDATA;
     } else {
@@ -1268,6 +1266,11 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
         if (nb_slices > 1) {
             slice_offset = AV_RL32(avpkt->data + slices_info_offset + slice * 8);
             slice_size = AV_RL32(avpkt->data + slices_info_offset + slice * 8 + 4);
+
+            if (slice_offset < 0 || slice_size <= 0 || (slice_offset&3) ||
+                slice_offset + (int64_t)slice_size > buf_size)
+                return AVERROR_INVALIDDATA;
+
             y_offset = height - (slice + 1) * slice_height;
             s->bdsp.bswap_buf((uint32_t *)s->bitstream_buffer,
                               (const uint32_t *)(buf + slice_offset), slice_size / 4);

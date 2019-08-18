@@ -43,10 +43,10 @@
 
 #define yuv2planeX_8(d1, d2, l1, src, x, perm, filter) do {\
         vector signed short ls;\
+        vector signed int   vf1, vf2, i1, i2;\
         GET_LS(l1, x, perm, src);\
-        vector signed int   i1  = vec_mule(filter, ls);\
-        vector signed int   i2  = vec_mulo(filter, ls);\
-        vector signed int   vf1, vf2;\
+        i1  = vec_mule(filter, ls);\
+        i2  = vec_mulo(filter, ls);\
         vf1 = vec_mergeh(i1, i2);\
         vf2 = vec_mergel(i1, i2);\
         d1 = vec_add(d1, vf1);\
@@ -247,8 +247,7 @@ av_cold void ff_sws_init_swscale_ppc(SwsContext *c)
     if (c->srcBpc == 8 && c->dstBpc <= 14) {
         c->hyScale = c->hcScale = hScale_real_altivec;
     }
-    if (!is16BPS(dstFormat) && !isNBPS(dstFormat) &&
-        dstFormat != AV_PIX_FMT_NV12 && dstFormat != AV_PIX_FMT_NV21 &&
+    if (!is16BPS(dstFormat) && !isNBPS(dstFormat) && !isSemiPlanarYUV(dstFormat) &&
         dstFormat != AV_PIX_FMT_GRAYF32BE && dstFormat != AV_PIX_FMT_GRAYF32LE &&
         !c->needAlpha) {
         c->yuv2planeX = yuv2planeX_altivec;

@@ -306,7 +306,7 @@ static int decode_element(AVCodecContext *avctx, AVFrame *frame, int ch_index,
             rice_history_mult[ch] = get_bits(&alac->gb, 3);
             lpc_order[ch]         = get_bits(&alac->gb, 5);
 
-            if (lpc_order[ch] >= alac->max_samples_per_frame)
+            if (lpc_order[ch] >= alac->max_samples_per_frame || !lpc_quant[ch])
                 return AVERROR_INVALIDDATA;
 
             /* read the predictor table */
@@ -486,7 +486,7 @@ static av_cold int alac_decode_close(AVCodecContext *avctx)
 static int allocate_buffers(ALACContext *alac)
 {
     int ch;
-    int buf_size = alac->max_samples_per_frame * sizeof(int32_t);
+    unsigned buf_size = alac->max_samples_per_frame * sizeof(int32_t);
 
     for (ch = 0; ch < 2; ch++) {
         alac->predict_error_buffer[ch]  = NULL;
