@@ -6125,6 +6125,15 @@ static int mov_init(AVFormatContext *s)
         return AVERROR(EINVAL);
     }
 
+    /* Call io_open call back if pb is NULL (output format is "mp4", and using mp4 muxer) */
+    if (!s->pb && s->io_open) {
+        AVDictionary *opts = NULL;
+        ret = s->io_open(s, &s->pb, s->url, AVIO_FLAG_WRITE, &opts);
+        av_dict_free(&opts);
+        if (ret < 0)
+            return ret;
+    }
+
     /* Non-seekable output is ok if using fragmentation. If ism_lookahead
      * is enabled, we don't support non-seekable output at all. */
     if (!(s->pb->seekable & AVIO_SEEKABLE_NORMAL) &&
