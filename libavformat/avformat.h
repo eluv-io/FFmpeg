@@ -1941,9 +1941,6 @@ typedef struct AVFormatContext {
     /* Special for avpipe, holds out_handler */
     void *avpipe_opaque;
 
-    /* To avoid double calling of io_open */
-    int call_io_open;
-
     /**
      * Skip duration calcuation in estimate_timings_from_pts.
      * - encoding: unused

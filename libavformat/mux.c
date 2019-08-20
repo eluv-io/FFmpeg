@@ -163,9 +163,6 @@ int avformat_alloc_output_context2(AVFormatContext **avctx, AVOutputFormat *ofor
                 ret = AVERROR(EINVAL);
                 goto error;
             }
-            /* If format is "mp4" and output format was properly set up, then set call_io_open flag */
-            if (!strcmp(format, "mp4"))
-                s->call_io_open = 1;
         } else {
             oformat = av_guess_format(NULL, filename, NULL);
             if (!oformat) {

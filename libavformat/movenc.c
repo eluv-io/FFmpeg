@@ -6125,8 +6125,8 @@ static int mov_init(AVFormatContext *s)
         return AVERROR(EINVAL);
     }
 
-    /* Call io_open call back if the flag is set (output format is "mp4", and using mp4 muxer) */
-    if (s->call_io_open && s->io_open) {
+    /* Call io_open call back if pb is NULL (output format is "mp4", and using mp4 muxer) */
+    if (!s->pb && s->io_open) {
         AVDictionary *opts = NULL;
         ret = s->io_open(s, &s->pb, s->url, AVIO_FLAG_WRITE, &opts);
         av_dict_free(&opts);
