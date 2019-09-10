@@ -133,6 +133,7 @@ typedef struct DASHContext {
 #endif
     int64_t seg_duration;
     int64_t seg_duration_ts;
+    int64_t start_fragment_index;
     int64_t frame_duration_ts;
     int remove_at_exit;
     int use_template;
@@ -1178,7 +1179,7 @@ static int init_crypto(AVFormatContext *s)
     DASHContext *c = s->priv_data;
     int ret = 0;
     int write_key_file = 0;
-    
+
     const int iv_len = sizeof(c->aes_iv);
     const int iv_hex_len = iv_len * 2;
     if (!c->aes_iv_hex || strlen(c->aes_iv_hex) == 0) {
@@ -1411,17 +1412,11 @@ static int dash_init(AVFormatContext *s)
                  */
             }
 
-            if (c->start_segment > 1) {
-                if (c->frame_duration_ts == 0) {
-                    av_log(s, AV_LOG_ERROR, "Frame duration not specified - fragment sequence numbers will be wrong");
-                } else {
-                    int fragments_per_segment = c->seg_duration_ts / c->frame_duration_ts;
-                    int start_fragment = ((c->start_segment - 1) * fragments_per_segment) + 1;
-                    char start_fragment_str[128];
-                    (void)sprintf(start_fragment_str, "%d", start_fragment);
-                    av_dict_set(&opts, "fragment_index", start_fragment_str, 0);
-                    av_log(s, AV_LOG_INFO, "Fragment index=%s", start_fragment_str);
-                }
+            if (c->start_fragment_index > 1) {
+                char start_fragment_index_str[128];
+                (void)sprintf(start_fragment_index_str, "%" PRId64, c->start_fragment_index);
+                av_dict_set(&opts, "fragment_index", start_fragment_index_str, 0);
+                av_log(s, AV_LOG_INFO, "Fragment index=%s", start_fragment_index_str);
             }
 
             if (c->encryption_scheme_str != NULL) {
@@ -2043,6 +2038,7 @@ static const AVOption options[] = {
 #endif
     { "seg_duration", "segment duration (in seconds, fractional value can be set)", OFFSET(seg_duration), AV_OPT_TYPE_DURATION, { .i64 = 5000000 }, 0, INT_MAX, E },
     { "seg_duration_ts", "segment duration timebase", OFFSET(seg_duration_ts), AV_OPT_TYPE_INT, { .i64 = 48048 }, 0, INT_MAX, E },
+    { "start_fragment_index", "starting frame sequence for fragmented mp4", OFFSET(start_fragment_index), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, E },
     { "frame_duration_ts", "frame duration timebase", OFFSET(frame_duration_ts), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, E },
     { "remove_at_exit", "remove all segments when finished", OFFSET(remove_at_exit), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
     { "use_template", "Use SegmentTemplate instead of SegmentList", OFFSET(use_template), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, E },
