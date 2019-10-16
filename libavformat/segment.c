@@ -258,6 +258,7 @@ static int segment_start(AVFormatContext *s, int write_header)
     if ((err = set_segment_filename(s)) < 0)
         return err;
 
+    oc->avpipe_opaque = s->avpipe_opaque;
     if ((err = s->io_open(s, &oc->pb, oc->url, AVIO_FLAG_WRITE, NULL)) < 0) {
         av_log(s, AV_LOG_ERROR, "Failed to open segment '%s'\n", oc->url);
         return err;
@@ -771,6 +772,7 @@ static int seg_init(AVFormatContext *s)
     if ((ret = set_segment_filename(s)) < 0)
         return ret;
     oc = seg->avf;
+    oc->avpipe_opaque = s->avpipe_opaque;
 
     if (seg->write_header_trailer) {
         if ((ret = s->io_open(s, &oc->pb,
