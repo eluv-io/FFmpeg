@@ -933,6 +933,15 @@ calc_times:
          (pkt->pts != AV_NOPTS_VALUE &&
           av_compare_ts(pkt->pts, st->time_base,
                         end_pts - seg->time_delta, AV_TIME_BASE_Q) >= 0))) {
+
+        av_log(s, AV_LOG_INFO, "segment eos stream:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d "
+            "end_pts=%"PRId64" tdelta=%"PRId64" initoff=%"PRId64"\n",
+            pkt->stream_index, av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base),
+            av_ts2timestr(pkt->duration, &st->time_base),
+            pkt->flags & AV_PKT_FLAG_KEY,
+            pkt->stream_index == seg->reference_stream_index ? seg->frame_count : -1,
+            end_pts, seg->time_delta, seg->initial_offset);
+
         /* sanitize end time in case last packet didn't have a defined duration */
         if (seg->cur_entry.last_duration == 0)
             seg->cur_entry.end_time = (double)pkt->pts * av_q2d(st->time_base);
@@ -961,7 +970,7 @@ calc_times:
     }
 
     if (seg->segment_frame_count == 0) {
-        av_log(s, AV_LOG_VERBOSE, "segment:'%s' starts with packet stream:%d pts:%s pts_time:%s frame:%d\n",
+        av_log(s, AV_LOG_INFO, "segment:'%s' starts with packet stream:%d pts:%s pts_time:%s frame:%d\n",
                seg->avf->url, pkt->stream_index,
                av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base), seg->frame_count);
     }
