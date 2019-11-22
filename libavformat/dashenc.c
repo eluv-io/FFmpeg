@@ -2009,9 +2009,13 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
         seg_end_duration = c->seg_duration;
     }
 
+    // For the rare case frame duration is not a timebase integer (for example 1501.5)
+    // or if frame duration is not constant we need to accommodate for the variation.
+    // When frame duration is fractional, the variation is always 1
+    const int64_t frame_duration_variation = 1;
     if ((!c->has_video || st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) &&
         pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
-        elapsed_duration >= c->seg_duration_ts)
+        elapsed_duration + frame_duration_variation  >= c->seg_duration_ts)
 /*        av_compare_ts(elapsed_duration, st->time_base,
                       seg_end_duration, AV_TIME_BASE_Q) >= 0)
 */
@@ -2033,6 +2037,10 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
                        "and use_template, or keep a stricter keyframe interval\n");
             }
         }
+
+        av_log(s, AV_LOG_DEBUG, "dash_write_packet end of segment pts=%"PRId64" duration=%"PRId64" start_pts=%"PRId64
+            " max_pts=%"PRId64" elapsed_duration=%"PRId64" seg_duration_ts=%"PRId64,
+            pkt->pts, pkt->duration, os->start_pts, os->max_pts, elapsed_duration, c->seg_duration_ts);
 
         if ((ret = dash_flush(s, 0, pkt->stream_index)) < 0)
             return ret;
