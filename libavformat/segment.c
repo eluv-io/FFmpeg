@@ -249,6 +249,8 @@ static int segment_start(AVFormatContext *s, int write_header)
         if ((err = segment_mux_init(s)) < 0)
             return err;
         oc = seg->avf;
+        if (!seg->reset_timestamps)
+            oc->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_NON_NEGATIVE;
     }
 
     seg->segment_idx++;
@@ -920,6 +922,13 @@ calc_times:
         }
     }
 
+#if 0
+    av_log(s, AV_LOG_INFO, "XXX packet stream:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d\n",
+            pkt->stream_index, av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base),
+            av_ts2timestr(pkt->duration, &st->time_base),
+            pkt->flags & AV_PKT_FLAG_KEY,
+            pkt->stream_index == seg->reference_stream_index ? seg->frame_count : -1);
+#endif
     ff_dlog(s, "packet stream:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d\n",
             pkt->stream_index, av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base),
             av_ts2timestr(pkt->duration, &st->time_base),
@@ -955,7 +964,12 @@ calc_times:
         seg->cut_pending = 0;
         seg->cur_entry.index = seg->segment_idx + seg->segment_idx_wrap * seg->segment_idx_wrap_nb;
         seg->cur_entry.start_time = (double)pkt->pts * av_q2d(st->time_base);
-        seg->cur_entry.start_pts = av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q);
+        if (seg->reset_timestamps)
+            seg->cur_entry.start_pts = av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q);
+        else
+            seg->cur_entry.start_pts = pkt->pts;
+        av_log(s, AV_LOG_INFO, "YYYY pkt->pts=%"PRId64", start_time=%"PRId64", seg->reset_timestamps=%d",
+            pkt->pts, seg->cur_entry.start_time, seg->reset_timestamps);
         seg->cur_entry.end_time = seg->cur_entry.start_time;
 
         if (seg->times || (!seg->frames && !seg->use_clocktime) && seg->write_empty)
@@ -984,6 +998,9 @@ calc_times:
     /* compute new timestamps */
     offset = av_rescale_q(seg->initial_offset - (seg->reset_timestamps ? seg->cur_entry.start_pts : 0),
                           AV_TIME_BASE_Q, st->time_base);
+    av_log(s, AV_LOG_INFO, "YYY1 offset=%"PRId64", reset_timestamps=%d, cur_entry.start_pts=%"PRId64", initial_offset=%"PRId64", pkt->pts=%"PRId64,
+        offset, seg->reset_timestamps, seg->cur_entry.start_pts, seg->initial_offset, pkt->pts);
+    
     if (pkt->pts != AV_NOPTS_VALUE)
         pkt->pts += offset;
     if (pkt->dts != AV_NOPTS_VALUE)
