@@ -942,7 +942,7 @@ calc_times:
         (seg->segment_frame_count > 0 || seg->write_empty) &&
         (seg->cut_pending || seg->frame_count >= start_frame ||
          (pkt->pts != AV_NOPTS_VALUE &&
-            pkt->pts > (seg->cur_entry.index+1) * seg->duration_ts)
+            pkt->pts >= (seg->cur_entry.index+1) * seg->duration_ts)
           /*av_compare_ts(pkt->pts, st->time_base,
                         end_pts - seg->time_delta, AV_TIME_BASE_Q) >= 0)*/)) {
 
