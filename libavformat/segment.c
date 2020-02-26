@@ -946,14 +946,6 @@ calc_times:
         (seg->cut_pending || seg->frame_count >= start_frame ||
          (pkt->pts != AV_NOPTS_VALUE && check_pts))) {
 
-        av_log(s, AV_LOG_INFO, "segment eos stream:%d segment:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d "
-            "end_pts=%"PRId64" tdelta=%"PRId64" initoff=%"PRId64"\n",
-            pkt->stream_index, seg->cur_entry.index, av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base),
-            av_ts2timestr(pkt->duration, &st->time_base),
-            pkt->flags & AV_PKT_FLAG_KEY,
-            pkt->stream_index == seg->reference_stream_index ? seg->frame_count : -1,
-            end_pts, seg->time_delta, seg->initial_offset);
-
         /* sanitize end time in case last packet didn't have a defined duration */
         if (seg->cur_entry.last_duration == 0)
             seg->cur_entry.end_time = (double)pkt->pts * av_q2d(st->time_base);
@@ -969,8 +961,15 @@ calc_times:
         seg->cur_entry.start_time = (double)pkt->pts * av_q2d(st->time_base);
         seg->cur_entry.start_pts = av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q);
 
-        av_log(s, AV_LOG_DEBUG, "pkt->pts=%"PRId64", start_time=%f, seg->reset_timestamps=%d, st->start_time=%"PRId64", rescale=%"PRId64,
-            pkt->pts, seg->cur_entry.start_time, seg->reset_timestamps, st->start_time, av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q));
+        av_log(s, AV_LOG_INFO, "segment eos stream:%d segment:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d "
+            "end_pts=%"PRId64" tdelta=%"PRId64" initoff=%"PRId64", rescale=%"PRId64", st->start_time=%"PRId64", cur_seg->start_time=%f\n",
+            pkt->stream_index, seg->cur_entry.index, av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base),
+            av_ts2timestr(pkt->duration, &st->time_base),
+            pkt->flags & AV_PKT_FLAG_KEY,
+            pkt->stream_index == seg->reference_stream_index ? seg->frame_count : -1,
+            end_pts, seg->time_delta, seg->initial_offset,
+            av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q),
+            st->start_time, seg->cur_entry.start_time);
 
         seg->cur_entry.end_time = seg->cur_entry.start_time;
 
