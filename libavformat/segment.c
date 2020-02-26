@@ -251,8 +251,11 @@ static int segment_start(AVFormatContext *s, int write_header)
         if ((err = segment_mux_init(s)) < 0)
             return err;
         oc = seg->avf;
+#if 0
+        /* I added this to have contiguous PTS of an stream but we might not need to go this direction (RM) */
         if (!seg->reset_timestamps)
             oc->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_NON_NEGATIVE;
+#endif
     }
 
     seg->segment_idx++;
@@ -884,6 +887,7 @@ static int seg_write_packet(AVFormatContext *s, AVPacket *pkt)
     struct tm ti;
     int64_t usecs;
     int64_t wrapped_val;
+    int check_pts = 0;
 
     if (!seg->avf || !seg->avf->pb)
         return AVERROR(EINVAL);
@@ -924,27 +928,23 @@ calc_times:
         }
     }
 
-#if 0
-    av_log(s, AV_LOG_INFO, "XXX packet stream:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d\n",
-            pkt->stream_index, av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base),
-            av_ts2timestr(pkt->duration, &st->time_base),
-            pkt->flags & AV_PKT_FLAG_KEY,
-            pkt->stream_index == seg->reference_stream_index ? seg->frame_count : -1);
-#endif
     ff_dlog(s, "packet stream:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d\n",
             pkt->stream_index, av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base),
             av_ts2timestr(pkt->duration, &st->time_base),
             pkt->flags & AV_PKT_FLAG_KEY,
             pkt->stream_index == seg->reference_stream_index ? seg->frame_count : -1);
 
+    /* If duration_ts was set use it to cut the segment, otherwise use the original time comparison of ffmpeg*/
+    if (seg->duration_ts > 0)
+        check_pts = (pkt->pts >= (seg->cur_entry.index+1) * seg->duration_ts);
+    else
+        check_pts = (av_compare_ts(pkt->pts, st->time_base, end_pts - seg->time_delta, AV_TIME_BASE_Q) >= 0);
+
     if (pkt->stream_index == seg->reference_stream_index &&
         (pkt->flags & AV_PKT_FLAG_KEY || seg->break_non_keyframes) &&
         (seg->segment_frame_count > 0 || seg->write_empty) &&
         (seg->cut_pending || seg->frame_count >= start_frame ||
-         (pkt->pts != AV_NOPTS_VALUE &&
-            pkt->pts >= (seg->cur_entry.index+1) * seg->duration_ts)
-          /*av_compare_ts(pkt->pts, st->time_base,
-                        end_pts - seg->time_delta, AV_TIME_BASE_Q) >= 0)*/)) {
+         (pkt->pts != AV_NOPTS_VALUE && check_pts))) {
 
         av_log(s, AV_LOG_INFO, "segment eos stream:%d segment:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d "
             "end_pts=%"PRId64" tdelta=%"PRId64" initoff=%"PRId64"\n",
@@ -968,8 +968,10 @@ calc_times:
         seg->cur_entry.index = seg->segment_idx + seg->segment_idx_wrap * seg->segment_idx_wrap_nb;
         seg->cur_entry.start_time = (double)pkt->pts * av_q2d(st->time_base);
         seg->cur_entry.start_pts = av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q);
-        av_log(s, AV_LOG_INFO, "YYYY pkt->pts=%"PRId64", start_time=%f, seg->reset_timestamps=%d, st->start_time=%"PRId64", rescale=%"PRId64,
+
+        av_log(s, AV_LOG_DEBUG, "pkt->pts=%"PRId64", start_time=%f, seg->reset_timestamps=%d, st->start_time=%"PRId64", rescale=%"PRId64,
             pkt->pts, seg->cur_entry.start_time, seg->reset_timestamps, st->start_time, av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q));
+
         seg->cur_entry.end_time = seg->cur_entry.start_time;
 
         if (seg->times || (!seg->frames && !seg->use_clocktime) && seg->write_empty)
@@ -998,7 +1000,8 @@ calc_times:
     /* compute new timestamps */
     offset = av_rescale_q(seg->initial_offset - (seg->reset_timestamps ? seg->cur_entry.start_pts : 0),
                           AV_TIME_BASE_Q, st->time_base);
-    av_log(s, AV_LOG_INFO, "YYY1 offset=%"PRId64", reset_timestamps=%d, cur_entry.start_pts=%"PRId64", initial_offset=%"PRId64", pkt->pts=%"PRId64,
+
+    av_log(s, AV_LOG_DEBUG, "offset=%"PRId64", reset_timestamps=%d, cur_entry.start_pts=%"PRId64", initial_offset=%"PRId64", pkt->pts=%"PRId64,
         offset, seg->reset_timestamps, seg->cur_entry.start_pts, seg->initial_offset, pkt->pts);
     
     if (pkt->pts != AV_NOPTS_VALUE)
