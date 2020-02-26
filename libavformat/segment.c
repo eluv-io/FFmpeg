@@ -118,6 +118,8 @@ typedef struct SegmentContext {
     int   break_non_keyframes;
     int   write_empty;
 
+    int64_t duration_ts;
+
     int use_rename;
     char temp_list_filename[1024];
 
@@ -249,6 +251,11 @@ static int segment_start(AVFormatContext *s, int write_header)
         if ((err = segment_mux_init(s)) < 0)
             return err;
         oc = seg->avf;
+#if 0
+        /* I added this to have contiguous PTS of an stream but we might not need to go this direction (RM) */
+        if (!seg->reset_timestamps)
+            oc->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_NON_NEGATIVE;
+#endif
     }
 
     seg->segment_idx++;
@@ -880,6 +887,7 @@ static int seg_write_packet(AVFormatContext *s, AVPacket *pkt)
     struct tm ti;
     int64_t usecs;
     int64_t wrapped_val;
+    int check_pts = 0;
 
     if (!seg->avf || !seg->avf->pb)
         return AVERROR(EINVAL);
@@ -926,21 +934,17 @@ calc_times:
             pkt->flags & AV_PKT_FLAG_KEY,
             pkt->stream_index == seg->reference_stream_index ? seg->frame_count : -1);
 
+    /* If duration_ts was set use it to cut the segment, otherwise use the original time comparison of ffmpeg*/
+    if (seg->duration_ts > 0)
+        check_pts = (pkt->pts >= (seg->cur_entry.index+1) * seg->duration_ts);
+    else
+        check_pts = (av_compare_ts(pkt->pts, st->time_base, end_pts - seg->time_delta, AV_TIME_BASE_Q) >= 0);
+
     if (pkt->stream_index == seg->reference_stream_index &&
         (pkt->flags & AV_PKT_FLAG_KEY || seg->break_non_keyframes) &&
         (seg->segment_frame_count > 0 || seg->write_empty) &&
         (seg->cut_pending || seg->frame_count >= start_frame ||
-         (pkt->pts != AV_NOPTS_VALUE &&
-          av_compare_ts(pkt->pts, st->time_base,
-                        end_pts - seg->time_delta, AV_TIME_BASE_Q) >= 0))) {
-
-        av_log(s, AV_LOG_INFO, "segment eos stream:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d "
-            "end_pts=%"PRId64" tdelta=%"PRId64" initoff=%"PRId64"\n",
-            pkt->stream_index, av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base),
-            av_ts2timestr(pkt->duration, &st->time_base),
-            pkt->flags & AV_PKT_FLAG_KEY,
-            pkt->stream_index == seg->reference_stream_index ? seg->frame_count : -1,
-            end_pts, seg->time_delta, seg->initial_offset);
+         (pkt->pts != AV_NOPTS_VALUE && check_pts))) {
 
         /* sanitize end time in case last packet didn't have a defined duration */
         if (seg->cur_entry.last_duration == 0)
@@ -956,6 +960,17 @@ calc_times:
         seg->cur_entry.index = seg->segment_idx + seg->segment_idx_wrap * seg->segment_idx_wrap_nb;
         seg->cur_entry.start_time = (double)pkt->pts * av_q2d(st->time_base);
         seg->cur_entry.start_pts = av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q);
+
+        av_log(s, AV_LOG_INFO, "segment eos stream:%d segment:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d "
+            "end_pts=%"PRId64" tdelta=%"PRId64" initoff=%"PRId64", rescale=%"PRId64", st->start_time=%"PRId64", cur_seg->start_time=%f\n",
+            pkt->stream_index, seg->cur_entry.index, av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base),
+            av_ts2timestr(pkt->duration, &st->time_base),
+            pkt->flags & AV_PKT_FLAG_KEY,
+            pkt->stream_index == seg->reference_stream_index ? seg->frame_count : -1,
+            end_pts, seg->time_delta, seg->initial_offset,
+            av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q),
+            st->start_time, seg->cur_entry.start_time);
+
         seg->cur_entry.end_time = seg->cur_entry.start_time;
 
         if (seg->times || (!seg->frames && !seg->use_clocktime) && seg->write_empty)
@@ -984,6 +999,10 @@ calc_times:
     /* compute new timestamps */
     offset = av_rescale_q(seg->initial_offset - (seg->reset_timestamps ? seg->cur_entry.start_pts : 0),
                           AV_TIME_BASE_Q, st->time_base);
+
+    av_log(s, AV_LOG_DEBUG, "offset=%"PRId64", reset_timestamps=%d, cur_entry.start_pts=%"PRId64", initial_offset=%"PRId64", pkt->pts=%"PRId64,
+        offset, seg->reset_timestamps, seg->cur_entry.start_pts, seg->initial_offset, pkt->pts);
+    
     if (pkt->pts != AV_NOPTS_VALUE)
         pkt->pts += offset;
     if (pkt->dts != AV_NOPTS_VALUE)
@@ -1109,6 +1128,7 @@ static const AVOption options[] = {
     { "reset_timestamps", "reset timestamps at the beginning of each segment", OFFSET(reset_timestamps), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, E },
     { "initial_offset", "set initial timestamp offset", OFFSET(initial_offset), AV_OPT_TYPE_DURATION, {.i64 = 0}, -INT64_MAX, INT64_MAX, E },
     { "write_empty_segments", "allow writing empty 'filler' segments", OFFSET(write_empty), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, E },
+    { "segment_duration_ts", "set segment duration based on timebase",        OFFSET(duration_ts), AV_OPT_TYPE_INT64, {.i64 = 0}, 0, 86400000000LL, E},
     { NULL },
 };
 
