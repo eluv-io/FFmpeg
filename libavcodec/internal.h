@@ -331,6 +331,11 @@ int ff_thread_can_start_frame(AVCodecContext *avctx);
 int avpriv_h264_has_num_reorder_frames(AVCodecContext *avctx);
 
 /**
+ * Returns an array of H2645NALs
+ */
+void* avpriv_h264_extract_nals(AVCodecParserContext *s);
+
+/**
  * Call avcodec_open2 recursively by decrementing counter, unlocking mutex,
  * calling the function and then restoring again. Assumes the mutex is
  * already locked

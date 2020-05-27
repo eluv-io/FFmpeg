@@ -166,14 +166,6 @@ typedef struct MOVTrack {
 } MOVTrack;
 
 typedef enum {
-    MOV_ENC_NONE = 0,
-    MOV_ENC_CENC,
-    MOV_ENC_CBC1,
-    MOV_ENC_CENS,
-    MOV_ENC_CBCS,
-} MOVEncryptionScheme;
-
-typedef enum {
     MOV_PRFT_NONE = 0,
     MOV_PRFT_SRC_WALLCLOCK,
     MOV_PRFT_SRC_PTS,
@@ -229,6 +221,8 @@ typedef struct MOVMuxContext {
     int encryption_key_len;
     uint8_t *encryption_kid;
     int encryption_kid_len;
+    uint8_t *encryption_iv;
+    int encryption_iv_len;
 
     int need_rewrite_extradata;
 

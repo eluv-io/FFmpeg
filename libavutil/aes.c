@@ -131,16 +131,26 @@ static inline void aes_crypt(AVAES *a, int s, const uint8_t *sbox,
 static void aes_encrypt(AVAES *a, uint8_t *dst, const uint8_t *src,
                         int count, uint8_t *iv, int rounds)
 {
-    while (count--) {
-        addkey_s(&a->state[1], src, &a->round_key[rounds]);
-        if (iv)
-            addkey_s(&a->state[1], iv, &a->state[1]);
-        aes_crypt(a, 2, sbox, enc_multbl);
-        addkey_d(dst, &a->state[0], &a->round_key[0]);
-        if (iv)
-            memcpy(iv, dst, 16);
+    int i = 0;
+    int pattern_block_length = a->crypt_byte_block + a->skip_byte_block;
+
+    while (i < count) {
+        if (pattern_block_length == 0 ||
+            i % pattern_block_length < a->crypt_byte_block)
+        {
+            addkey_s(&a->state[1], src, &a->round_key[rounds]);
+            if (iv)
+                addkey_s(&a->state[1], iv, &a->state[1]);
+            aes_crypt(a, 2, sbox, enc_multbl);
+            addkey_d(dst, &a->state[0], &a->round_key[0]);
+            if (iv)
+                memcpy(iv, dst, 16);
+        } else {
+            memcpy(dst, src, 16); // skip encryption
+        }
         src += 16;
         dst += 16;
+        i++;
     }
 }
 
@@ -266,3 +276,7 @@ int av_aes_init(AVAES *a, const uint8_t *key, int key_bits, int decrypt)
     return 0;
 }
 
+void av_aes_set_pattern(struct AVAES *a, int crypt_byte_block, int skip_byte_block) {
+    a->crypt_byte_block = crypt_byte_block;
+    a->skip_byte_block = skip_byte_block;
+}

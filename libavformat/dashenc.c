@@ -177,6 +177,7 @@ typedef struct DASHContext {
     char *encryption_scheme_str;
     uint8_t *encryption_key;
     uint8_t *encryption_kid;
+    uint8_t *encryption_iv;
 
     int aes_encrypt;
     uint8_t aes_iv[KEYSIZE];
@@ -1547,6 +1548,9 @@ static int dash_init(AVFormatContext *s)
             if (c->encryption_kid != NULL) {
                 av_dict_set(&opts, "encryption_kid", c->encryption_kid, 0);
             }
+            if (c->encryption_iv != NULL) {
+                av_dict_set(&opts, "encryption_iv", c->encryption_iv, 0);
+            }
         } else {
             av_dict_set_int(&opts, "cluster_time_limit", c->seg_duration / 1000, 0);
             av_dict_set_int(&opts, "cluster_size_limit", 5 * 1024 * 1024, 0); // set a large cluster size limit
@@ -2223,9 +2227,10 @@ static const AVOption options[] = {
     { "ignore_io_errors", "Ignore IO errors during open and write. Useful for long-duration runs with network output", OFFSET(ignore_io_errors), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
     { "lhls", "Enable Low-latency HLS(Experimental). Adds #EXT-X-PREFETCH tag with current segment's URI", OFFSET(lhls), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
     { "start_segment", "Specify the index of the first segment (which by default is 1)", OFFSET(start_segment), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, INT_MAX, E },
-    { "encryption_scheme", "Configures the Common Encryption scheme, allowed values are none, cenc, cbc1, cens, cbcs", OFFSET(encryption_scheme_str), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
+    { "encryption_scheme", "Configures the Common Encryption scheme, allowed values are none, cenc-aes-ctr, cenc-aes-cbc-pattern", OFFSET(encryption_scheme_str), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "encryption_key", "The media encryption key (hex)", OFFSET(encryption_key), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "encryption_kid", "The media encryption key identifier (hex)", OFFSET(encryption_kid), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
+    { "encryption_iv", "Specify the media encryption iv (hex)", OFFSET(encryption_iv), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "hls_enc", "enable AES128 encryption support", OFFSET(aes_encrypt), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, E},
     { "hls_enc_key", "hex-coded 16 byte key to encrypt the segments", OFFSET(aes_key_hex), AV_OPT_TYPE_STRING, .flags = E},
     { "hls_enc_key_url", "url to access the key to decrypt the segments", OFFSET(aes_key_url), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, E},

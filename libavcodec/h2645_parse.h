@@ -63,6 +63,7 @@ typedef struct H2645NAL {
      * H.264 only, nal_ref_idc
      */
     int ref_idc;
+    int slice_header_len_bits;
 } H2645NAL;
 
 typedef struct H2645RBSP {
