@@ -2028,8 +2028,9 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
      * or interval around expected PTS.
      * For now set the window/interval to half of the packet duration.
      * PENDING (RM), we might need to make this a parameter.
+     * const int64_t frame_duration_variation = pkt->duration/2;
      */ 
-    const int64_t frame_duration_variation = pkt->duration/2;
+    const int64_t frame_duration_variation = 1;
     if ((!c->has_video || st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) &&
         pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
         elapsed_duration + frame_duration_variation  >= c->seg_duration_ts)
