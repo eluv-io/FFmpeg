@@ -2019,9 +2019,16 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
         pkt->flags & AV_PKT_FLAG_KEY, pkt->pts, pkt->duration, os->start_pts, os->max_pts,
         elapsed_duration, c->seg_duration_ts);
 #endif
-    // For the rare case frame duration is not a timebase integer (for example 1501.5)
-    // or if frame duration is not constant we need to accommodate for the variation.
-    // When frame duration is fractional, the variation is always 1
+    /*
+     * For the rare case frame duration is not a timebase integer (for example 1501.5)
+     * or if frame duration is not constant we need to accommodate for the variation.
+     * When frame duration is fractional, the variation is always 1
+     * In another case, like PBS live stream, the packet duration is variable (for example 2970, or 3060).
+     * In this case, the cutting might not happen in exact PTS that is expected. Therefore, cut within a window
+     * or interval around expected PTS.
+     * For now set the window/interval to half of the packet duration.
+     * PENDING (RM), we might need to make this a parameter.
+     */ 
     const int64_t frame_duration_variation = pkt->duration/2;
     if ((!c->has_video || st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) &&
         pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
