@@ -2030,7 +2030,7 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
      * PENDING (RM), we might need to make this a parameter.
      * const int64_t frame_duration_variation = pkt->duration/2;
      */ 
-    const int64_t frame_duration_variation = 1;
+    const int64_t frame_duration_variation = 32;
     if ((!c->has_video || st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) &&
         pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
         elapsed_duration + frame_duration_variation  >= c->seg_duration_ts)
