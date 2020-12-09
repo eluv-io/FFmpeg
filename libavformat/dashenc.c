@@ -1342,6 +1342,10 @@ static int dash_init(AVFormatContext *s)
     if (c->single_file)
         c->use_template = 0;
 
+    s->min_frame_duration = INT64_MAX;
+    s->max_frame_duration = INT64_MIN;
+    s->prev_pts = AV_NOPTS_VALUE;
+
 #if FF_API_DASH_MIN_SEG_DURATION
     if (c->min_seg_duration != 5000000) {
         av_log(s, AV_LOG_WARNING, "The min_seg_duration option is deprecated and will be removed. Please use the -seg_duration\n");
@@ -1604,7 +1608,7 @@ static int dash_init(AVFormatContext *s)
         av_log(s, AV_LOG_DEBUG, "HAPPY seg_duration_ts=%lld mod=%lld\n", c->seg_duration_ts,
             c->seg_duration * s->streams[i]->time_base.den % (1000000 * s->streams[i]->time_base.num));
 #endif
-        av_log(s, AV_LOG_DEBUG, "seg_duration_ts=%lld \n", c->seg_duration_ts);
+        av_log(s, AV_LOG_DEBUG, "seg_duration_ts=%"PRId64"\n", c->seg_duration_ts);
 
         set_codec_str(s, st->codecpar, &st->avg_frame_rate, os->codec_str,
                       sizeof(os->codec_str));
@@ -2013,11 +2017,36 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
         seg_end_duration = c->seg_duration;
     }
 
+    if (s->prev_pts != AV_NOPTS_VALUE) {
+        int64_t delta = pkt->pts - s->prev_pts;
+        delta = delta > 0 ? delta : (-1)*delta;
+        if (delta < s->min_frame_duration)
+            s->min_frame_duration = delta;
+        if (delta > s->max_frame_duration)
+            s->max_frame_duration = delta;
+    }
+
+    int64_t frame_duration_variation = 0;
+
+    if (s->prev_pts != AV_NOPTS_VALUE)
+        frame_duration_variation = (s->max_frame_duration - s->min_frame_duration) * 2;
+    
+    /*
+     * This is just for backward compatibility and not break anything.
+     * (we used to set frame_duration_variation = 1)
+     */
+    if (frame_duration_variation == 0)
+        frame_duration_variation = 1;
+
+    s->prev_pts = pkt->pts;
+
 #if 0
     av_log(s, AV_LOG_INFO, "dash_write_packet is_key=%d pts=%"PRId64" duration=%"PRId64" start_pts=%"PRId64
-        " max_pts=%"PRId64" elapsed_duration=%"PRId64" seg_duration_ts=%"PRId64,
+        " max_pts=%"PRId64" elapsed_duration=%"PRId64" seg_duration_ts=%"PRId64" frame_duration_variation=%"PRId64
+        " min_frame_duration=%"PRId64" max_frame_duration=%"PRId64,
         pkt->flags & AV_PKT_FLAG_KEY, pkt->pts, pkt->duration, os->start_pts, os->max_pts,
-        elapsed_duration, c->seg_duration_ts);
+        elapsed_duration, c->seg_duration_ts, frame_duration_variation,
+        s->min_frame_duration, s->max_frame_duration);
 #endif
     /*
      * For the rare case frame duration is not a timebase integer (for example 1501.5)
@@ -2026,11 +2055,7 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
      * In another case, like PBS live stream, the packet duration is variable (for example 2970, or 3060).
      * In this case, the cutting might not happen in exact PTS that is expected. Therefore, cut within a window
      * or interval around expected PTS.
-     * For now set the window/interval to half of the packet duration.
-     * PENDING (RM), we might need to make this a parameter.
-     * const int64_t frame_duration_variation = pkt->duration/2;
      */ 
-    const int64_t frame_duration_variation = 32;
     if ((!c->has_video || st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) &&
         pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
         elapsed_duration + frame_duration_variation  >= c->seg_duration_ts)

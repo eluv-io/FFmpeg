@@ -1955,6 +1955,15 @@ typedef struct AVFormatContext {
      */
     int skip_estimate_duration_from_pts;
 
+    /*
+     * Keep track of min and max of frame duration and calculate the following:
+     * frame_duration_variation = (max_frame_duration - min_frame_duration) * 2;
+     * frame_duration_variation will be used to cut ABR dash/hls segments.
+     */
+    int64_t prev_pts;
+    int64_t min_frame_duration;
+    int64_t max_frame_duration;
+
 } AVFormatContext;
 
 #if FF_API_FORMAT_GET_SET
