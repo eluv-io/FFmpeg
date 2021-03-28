@@ -72,6 +72,8 @@ typedef struct SegmentContext {
     int segment_idx_wrap;  ///< number after which the index wraps
     int segment_idx_wrap_nb;  ///< number of time the index has wraped
     int segment_count;     ///< number of segment files already written
+    int segment_start_index;
+    int segment_start_index_initialized;
     ff_const59 AVOutputFormat *oformat;
     AVFormatContext *avf;
     char *format;              ///< format to use for output segment files
@@ -256,6 +258,12 @@ static int segment_start(AVFormatContext *s, int write_header)
         if (!seg->reset_timestamps)
             oc->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_NON_NEGATIVE;
 #endif
+    }
+
+    // Initialize segment_start_index 
+    if (!seg->segment_start_index_initialized) {
+        seg->segment_start_index = seg->segment_idx;
+        seg->segment_start_index_initialized = 1;
     }
 
     seg->segment_idx++;
@@ -936,9 +944,18 @@ calc_times:
 
     /* If duration_ts was set use it to cut the segment, otherwise use the original time comparison of ffmpeg*/
     if (seg->duration_ts > 0)
-        check_pts = (pkt->pts >= (seg->cur_entry.index+1) * seg->duration_ts);
+        check_pts = (pkt->pts >= (seg->cur_entry.index+1-seg->segment_start_index) * seg->duration_ts);
     else
         check_pts = (av_compare_ts(pkt->pts, st->time_base, end_pts - seg->time_delta, AV_TIME_BASE_Q) >= 0);
+
+#if 0
+    av_log(s, AV_LOG_INFO, "FFF packet stream:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d, check_pts=%d\n",
+            pkt->stream_index, av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base),
+            av_ts2timestr(pkt->duration, &st->time_base),
+            pkt->flags & AV_PKT_FLAG_KEY,
+            pkt->stream_index == seg->reference_stream_index ? seg->frame_count : -1,
+            check_pts);
+#endif
 
     if (pkt->stream_index == seg->reference_stream_index &&
         (pkt->flags & AV_PKT_FLAG_KEY || seg->break_non_keyframes) &&
