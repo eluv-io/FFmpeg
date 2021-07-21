@@ -641,4 +641,7 @@ void ff_mov_cenc_free(MOVMuxCencContext* ctx)
         av_freep(&ctx->aes_cbc);
     }
     av_freep(&ctx->auxiliary_info);
+    av_freep(&ctx->auxiliary_info_sizes);
+    av_parser_close(ctx->parser);
+    avcodec_free_context(&ctx->parser_avctx);
 }
