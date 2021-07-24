@@ -312,7 +312,9 @@ static int parse_slice(AVCodecParserContext *s, AVCodecContext *avctx,
     /* FIXME: MMCO_RESET could appear in non-first slice.
     *        Maybe, we should parse all undisposable non-IDR slice of this
     *        picture until encountering MMCO_RESET in a slice of it. */
-    for (i = 0; (unsigned int)i < sizeof(p->mmco); i++) {
+    for (i = 0; (unsigned int)i < MAX_MMCO_COUNT; i++) {
+        if (p->mmco[i].opcode == MMCO_END)
+            break;
         if (p->mmco[i].opcode == MMCO_RESET) {
             got_reset = 1;
             break;
