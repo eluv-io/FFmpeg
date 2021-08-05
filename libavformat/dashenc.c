@@ -26,7 +26,13 @@
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
+#if CONFIG_GCRYPT
+#include <gcrypt.h>
+#elif CONFIG_OPENSSL
+#include <openssl/rand.h>
+#endif
 
+#include "libavutil/aes.h"
 #include "libavutil/avassert.h"
 #include "libavutil/avutil.h"
 #include "libavutil/avstring.h"
@@ -35,6 +41,7 @@
 #include "libavutil/mathematics.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
+#include "libavutil/random_seed.h"
 #include "libavutil/parseutils.h"
 #include "libavutil/rational.h"
 #include "libavutil/time.h"
@@ -57,6 +64,10 @@
 #include "url.h"
 #include "vpcc.h"
 #include "dash.h"
+
+static const int BLOCKSIZE = 16;
+static const int KEYSIZE = 16;
+static const char AES_KEY_OUT_PATH[] = "key.bin";
 
 typedef enum {
     SEGMENT_TYPE_AUTO = 0,
@@ -145,6 +156,13 @@ typedef struct OutputStream {
     int64_t gop_size;
     AVRational sar;
     int coding_dependency;
+    struct AVAES *aes_context;
+    int aes_encrypt;
+    uint8_t aes_iv[KEYSIZE];
+    uint8_t aes_pad[BLOCKSIZE];
+    int aes_pad_len;
+    uint8_t *aes_write_buf;
+    unsigned int aes_write_buf_size;
 } OutputStream;
 
 typedef struct DASHContext {
@@ -204,6 +222,24 @@ typedef struct DASHContext {
     AVRational min_playback_rate;
     AVRational max_playback_rate;
     int64_t update_period;
+
+    int64_t seg_duration_ts;
+    int64_t start_fragment_index;
+    int64_t frame_duration_ts;
+    int start_segment;
+
+    // Pass-through options to movenc -PTT
+    char *encryption_scheme_str;
+    uint8_t *encryption_key;
+    uint8_t *encryption_kid;
+    uint8_t *encryption_iv;
+
+    int aes_encrypt;
+    uint8_t aes_iv[KEYSIZE];
+    char *aes_iv_hex;
+    uint8_t aes_key[KEYSIZE];
+    char *aes_key_hex;
+    char *aes_key_url;
 } DASHContext;
 
 static const struct codec_string {
@@ -217,6 +253,69 @@ static const struct codec_string {
     { AV_CODEC_ID_FLAC, "flac" },
     { AV_CODEC_ID_NONE }
 };
+
+static int aes_init(DASHContext *c, OutputStream *os) {
+    if (!c->aes_encrypt) return 0;
+    av_assert0(os->aes_context == NULL);
+    int ret = 0;
+    if ((os->aes_context = av_aes_alloc()) == NULL)
+        return AVERROR(ENOMEM);
+    if ((ret = av_aes_init(os->aes_context, c->aes_key, BLOCKSIZE * 8, 0)) < 0)
+        return ret;
+    os->aes_encrypt = 1;
+    memcpy(os->aes_iv, c->aes_iv, sizeof(os->aes_iv));
+    return 0;
+}
+
+static void aes_free(OutputStream *os) {
+    if (!os->aes_encrypt) return;
+    if (os->aes_context) {
+        uint8_t out_buf[BLOCKSIZE];
+        int pad = BLOCKSIZE - os->aes_pad_len;
+
+        memset(&os->aes_pad[os->aes_pad_len], pad, pad);
+        av_aes_crypt(os->aes_context, out_buf, os->aes_pad, 1, os->aes_iv, 0);
+        avio_write(os->out, out_buf, BLOCKSIZE);
+    }
+    av_freep(&os->aes_context);
+    av_freep(&os->aes_write_buf);
+    os->aes_encrypt = 0;
+    os->aes_pad_len = 0;
+    os->aes_write_buf_size = 0;
+}
+
+static int dashenc_avio_write(OutputStream *os, const unsigned char *buf, int size) {
+    if (!os->aes_encrypt) {
+        avio_write(os->out, buf, size);
+        return size;
+    }
+
+    int total_size = size + os->aes_pad_len;
+    int pad_len = total_size % BLOCKSIZE;
+    int out_size = total_size - pad_len;
+    int blocks = out_size / BLOCKSIZE;
+
+    if (out_size) {
+        av_fast_malloc(&os->aes_write_buf, &os->aes_write_buf_size, out_size);
+        if (!os->aes_write_buf)
+            return AVERROR(ENOMEM);
+        if (os->aes_pad_len) {
+            memcpy(&os->aes_pad[os->aes_pad_len], buf, BLOCKSIZE - os->aes_pad_len);
+            av_aes_crypt(os->aes_context, os->aes_write_buf, os->aes_pad, 1, os->aes_iv, 0);
+            blocks--;
+        }
+        av_aes_crypt(os->aes_context,
+                     &os->aes_write_buf[os->aes_pad_len ? BLOCKSIZE : 0],
+                     &buf[os->aes_pad_len ? BLOCKSIZE - os->aes_pad_len : 0],
+                     blocks, os->aes_iv, 0);
+        avio_write(os->out, os->aes_write_buf, out_size);
+        memcpy(os->aes_pad, &buf[size - pad_len], pad_len);
+    } else {
+        memcpy(&os->aes_pad[os->aes_pad_len], buf, size);
+    }
+    os->aes_pad_len = pad_len;
+    return size;
+}
 
 static int dashenc_io_open(AVFormatContext *s, AVIOContext **pb, char *filename,
                            AVDictionary **options) {
@@ -455,7 +554,7 @@ static int flush_dynbuf(DASHContext *c, OutputStream *os, int *range_length)
         *range_length = avio_close_dyn_buf(os->ctx->pb, &buffer);
         os->ctx->pb = NULL;
         if (os->out)
-            avio_write(os->out, buffer + os->written_len, *range_length - os->written_len);
+            dashenc_avio_write(os, buffer + os->written_len, *range_length - os->written_len);
         os->written_len = 0;
         av_free(buffer);
 
@@ -508,8 +607,9 @@ static void write_hls_media_playlist(OutputStream *os, AVFormatContext *s,
     AVDictionary *http_opts = NULL;
     int target_duration = 0;
     int ret = 0;
-    const char *proto = avio_find_protocol_name(c->dirname);
-    int use_rename = proto && !strcmp(proto, "file");
+    //const char *proto = avio_find_protocol_name(c->dirname);
+    //int use_rename = proto && !strcmp(proto, "file");
+    int use_rename = 0;
     int i, start_index, start_number;
     double prog_date_time = 0;
 
@@ -540,6 +640,13 @@ static void write_hls_media_playlist(OutputStream *os, AVFormatContext *s,
 
     ff_hls_write_playlist_header(c->m3u8_out, 6, -1, target_duration,
                                  start_number, PLAYLIST_TYPE_NONE, 0);
+
+    if (c->aes_encrypt) {
+        avio_printf(c->m3u8_out, "#EXT-X-KEY:METHOD=AES-128,URI=\"%s\"", c->aes_key_url);
+        if (*c->aes_iv_hex)
+            avio_printf(c->m3u8_out, ",IV=0x%s", c->aes_iv_hex);
+        avio_printf(c->m3u8_out, "\n");
+    }
 
     ff_hls_write_init_file(c->m3u8_out, os->initfile, c->single_file,
                            os->init_range_length, os->init_start_pos);
@@ -590,6 +697,7 @@ static int flush_init_segment(AVFormatContext *s, OutputStream *os)
     if (!c->single_file) {
         char filename[1024];
         snprintf(filename, sizeof(filename), "%s%s", c->dirname, os->initfile);
+        aes_free(os);
         dashenc_io_close(s, &os->out, filename);
     }
     return 0;
@@ -629,6 +737,7 @@ static void dash_free(AVFormatContext *s)
         av_freep(&os->single_file_name);
         av_freep(&os->init_seg_name);
         av_freep(&os->media_seg_name);
+        aes_free(os);
     }
     av_freep(&c->streams);
 
@@ -1141,6 +1250,8 @@ static int write_manifest(AVFormatContext *s, int final)
     if (!use_rename && !warned_non_file++)
         av_log(s, AV_LOG_ERROR, "Cannot use rename on non file protocol, this may lead to races and temporary partial files\n");
 
+    use_rename = 0; // PENDING(SSS) need protocol 'buf'
+
     snprintf(temp_filename, sizeof(temp_filename), use_rename ? "%s.tmp" : "%s", s->url);
     set_http_options(&opts, c);
     ret = dashenc_io_open(s, &c->mpd_out, temp_filename, &opts);
@@ -1370,6 +1481,85 @@ static int dict_copy_entry(AVDictionary **dst, const AVDictionary *src, const ch
     return 0;
 }
 
+static int randomize(uint8_t *buf, int len)
+{
+#if CONFIG_GCRYPT
+    gcry_randomize(buf, len, GCRY_VERY_STRONG_RANDOM);
+    return 0;
+#elif CONFIG_OPENSSL
+    if (RAND_bytes(buf, len))
+        return 0;
+#else
+    for (int i = 0; i < len; i++) {
+        buf[i] = av_get_random_seed();
+    }
+    return 0;
+#endif
+    return AVERROR(EINVAL);
+}
+
+// Compare to hlsenc.c::do_encrypt() -PTT
+static int init_crypto(AVFormatContext *s)
+{
+    DASHContext *c = s->priv_data;
+    int ret = 0;
+    int write_key_file = 0;
+
+    const int iv_len = sizeof(c->aes_iv);
+    const int iv_hex_len = iv_len * 2;
+    if (!c->aes_iv_hex || strlen(c->aes_iv_hex) == 0) {
+        if ((ret = randomize(c->aes_iv, iv_len)) < 0) {
+            av_log(s, AV_LOG_ERROR, "Failed to generate an AES IV\n");
+            return ret;
+        }
+        c->aes_iv_hex = av_mallocz(iv_hex_len + 1);
+        ff_data_to_hex(c->aes_iv_hex, c->aes_iv, iv_len, 0);
+        c->aes_iv_hex[iv_hex_len] = '\0';
+    } else {
+        if (strlen(c->aes_iv_hex) != iv_hex_len) {
+            av_log(s, AV_LOG_ERROR, "The AES IV must be 32 hex characters\n");
+            return ret;
+        }
+        ff_hex_to_data(c->aes_iv, c->aes_iv_hex);
+    }
+
+    const int key_len = sizeof(c->aes_key);
+    const int key_hex_len = key_len * 2;
+    if (!c->aes_key_hex || strlen(c->aes_key_hex) == 0) {
+        if ((ret = randomize(c->aes_key, key_len)) < 0) {
+            av_log(s, AV_LOG_ERROR, "Failed to generate an AES key\n");
+            return ret;
+        }
+        c->aes_key_hex = av_mallocz(key_hex_len + 1);
+        ff_data_to_hex(c->aes_key_hex, c->aes_key, key_len, 0);
+        c->aes_key_hex[key_hex_len] = '\0';
+        write_key_file = 1;
+    } else {
+        if (strlen(c->aes_key_hex) != key_hex_len) {
+            av_log(s, AV_LOG_ERROR, "The AES key must be 32 hex characters\n");
+            return ret;
+        }
+        ff_hex_to_data(c->aes_key, c->aes_key_hex);
+    }
+
+    if (!c->aes_key_url || strlen(c->aes_key_url) == 0) {
+        c->aes_key_url = av_mallocz(sizeof(AES_KEY_OUT_PATH));
+        av_strlcpy(c->aes_key_url, AES_KEY_OUT_PATH, sizeof(AES_KEY_OUT_PATH));
+        write_key_file = 1;
+    }
+
+    if (write_key_file) {
+        AVIOContext *pb = NULL;
+        if ((ret = s->io_open(s, &pb, AES_KEY_OUT_PATH, AVIO_FLAG_WRITE, NULL)) < 0)
+            return ret;
+        avio_seek(pb, 0, SEEK_CUR);
+        avio_write(pb, c->aes_key, KEYSIZE);
+        ff_format_io_close(s, &pb);
+    }
+
+    return 0;
+}
+
 static int dash_init(AVFormatContext *s)
 {
     DASHContext *c = s->priv_data;
@@ -1382,6 +1572,10 @@ static int dash_init(AVFormatContext *s)
         c->single_file = 1;
     if (c->single_file)
         c->use_template = 0;
+
+    s->min_frame_duration = INT64_MAX;
+    s->max_frame_duration = INT64_MIN;
+    s->prev_pts = AV_NOPTS_VALUE;
 
     if (!c->profile) {
         av_log(s, AV_LOG_ERROR, "At least one profile must be enabled.\n");
@@ -1481,6 +1675,10 @@ static int dash_init(AVFormatContext *s)
     if ((ret = init_segment_types(s)) < 0)
         return ret;
 
+    if (c->aes_encrypt) {
+        if ((ret = init_crypto(s)) < 0) return ret;
+    }
+
     for (i = 0; i < s->nb_streams; i++) {
         OutputStream *os = &c->streams[i];
         AdaptationSet *as = &c->as[os->as_idx - 1];
@@ -1488,6 +1686,7 @@ static int dash_init(AVFormatContext *s)
         AVStream *st;
         AVDictionary *opts = NULL;
         char filename[1024];
+        AVRational time_base;
 
         os->bit_rate = s->streams[i]->codecpar->bit_rate;
         if (!os->bit_rate) {
@@ -1589,6 +1788,8 @@ static int dash_init(AVFormatContext *s)
         av_dict_free(&opts);
         if (ret < 0)
             return ret;
+        if ((ret = aes_init(c, os)) != 0)
+            return ret;
         os->init_start_pos = 0;
 
         av_dict_copy(&opts, c->format_options, 0);
@@ -1632,10 +1833,39 @@ static int dash_init(AVFormatContext *s)
                 // skip_trailer : Avoids growing memory usage with time
                 av_dict_set(&opts, "movflags", "+dash+delay_moov+skip_sidx+skip_trailer", AV_DICT_APPEND);
             else {
-                if (c->global_sidx)
-                    av_dict_set(&opts, "movflags", "+dash+delay_moov+global_sidx+skip_trailer", AV_DICT_APPEND);
-                else
-                    av_dict_set(&opts, "movflags", "+dash+delay_moov+skip_trailer", AV_DICT_APPEND);
+                if (c->global_sidx) {
+                    if (c->start_segment > 1) {
+                        av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov+frag_discont+skip_trailer", 0);
+                    } else {
+                        av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov+skip_trailer", 0);
+                    }
+                } else {
+                    if (c->start_segment > 1) {
+                        av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov+frag_discont", 0);
+                    } else {
+                        av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov", 0);
+                    }
+                }
+            }
+
+            if (c->start_fragment_index > 1) {
+                char start_fragment_index_str[128];
+                (void)sprintf(start_fragment_index_str, "%" PRId64, c->start_fragment_index);
+                av_dict_set(&opts, "fragment_index", start_fragment_index_str, 0);
+                av_log(s, AV_LOG_INFO, "Fragment index=%s", start_fragment_index_str);
+            }
+
+            if (c->encryption_scheme_str != NULL) {
+                av_dict_set(&opts, "encryption_scheme", c->encryption_scheme_str, 0);
+            }
+            if (c->encryption_key != NULL) {
+                av_dict_set(&opts, "encryption_key", c->encryption_key, 0);
+            }
+            if (c->encryption_kid != NULL) {
+                av_dict_set(&opts, "encryption_kid", c->encryption_kid, 0);
+            }
+            if (c->encryption_iv != NULL) {
+                av_dict_set(&opts, "encryption_iv", c->encryption_iv, 0);
             }
             if (os->frag_type == FRAG_TYPE_EVERY_FRAME)
                 av_dict_set(&opts, "movflags", "+frag_every_frame", AV_DICT_APPEND);
@@ -1652,7 +1882,18 @@ static int dash_init(AVFormatContext *s)
             av_dict_set_int(&opts, "dash_track_number", i + 1, 0);
             av_dict_set_int(&opts, "live", 1, 0);
         }
+        time_base = st->time_base;
+        /* avformat_init_output() might change stream time_base if time_base < 10000 */
         ret = avformat_init_output(ctx, &opts);
+        /*
+         * Basically the problem is when time_base < 10000, then ffmpeg doubles the timebase in a loop (in movenc.c)
+         * until it becomes bigger than 10000 (i.e 600 -> 19200).
+         * This change in the time_base causes a divide by zero in dash_flush() function.
+         * To avoid this situation, it is needed to rescale seg_duration_ts too.
+         */
+        if (time_base.den != st->time_base.den) {
+            c->seg_duration_ts *= st->time_base.den/(time_base.den*st->time_base.num);
+        }
         av_dict_free(&opts);
         if (ret < 0)
             return ret;
@@ -1701,12 +1942,22 @@ static int dash_init(AVFormatContext *s)
             c->has_video = 1;
         }
 
+        /* Calculate the seg_duration in time_base units */
+#if 0
+        c->seg_duration_ts =
+            (c->seg_duration * s->streams[i]->time_base.den) /
+            (1000000 * s->streams[i]->time_base.num);
+        av_log(s, AV_LOG_DEBUG, "HAPPY seg_duration_ts=%lld mod=%lld\n", c->seg_duration_ts,
+            c->seg_duration * s->streams[i]->time_base.den % (1000000 * s->streams[i]->time_base.num));
+#endif
+        av_log(s, AV_LOG_DEBUG, "seg_duration_ts=%"PRId64"\n", c->seg_duration_ts);
+
         set_codec_str(s, st->codecpar, &st->avg_frame_rate, os->codec_str,
                       sizeof(os->codec_str));
         os->first_pts = AV_NOPTS_VALUE;
         os->max_pts = AV_NOPTS_VALUE;
         os->last_dts = AV_NOPTS_VALUE;
-        os->segment_index = 1;
+        os->segment_index = c->start_segment;
 
         if (s->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
             c->nr_of_streams_to_flush++;
@@ -1910,6 +2161,8 @@ static int dash_flush(AVFormatContext *s, int final, int stream)
     const char *proto = avio_find_protocol_name(s->url);
     int use_rename = proto && !strcmp(proto, "file");
 
+    use_rename = 0;
+
     int cur_flush_segment_index = 0, next_exp_index = -1;
     if (stream >= 0) {
         cur_flush_segment_index = c->streams[stream].segment_index;
@@ -1961,6 +2214,7 @@ static int dash_flush(AVFormatContext *s, int final, int stream)
         if (c->single_file) {
             find_index_range(s, os->full_path, os->pos, &index_length);
         } else {
+            aes_free(os);
             dashenc_io_close(s, &os->out, os->temp_path);
 
             if (use_rename) {
@@ -1972,6 +2226,20 @@ static int dash_flush(AVFormatContext *s, int final, int stream)
 
         duration = av_rescale_q(os->max_pts - os->start_pts, st->time_base, AV_TIME_BASE_Q);
         os->last_duration = FFMAX(os->last_duration, duration);
+
+        if (!os->muxer_overhead) {
+            if (av_rescale_q(os->max_pts - os->start_pts, st->time_base, AV_TIME_BASE_Q) != 0)
+                os->muxer_overhead = ((int64_t) (range_length - os->total_pkt_size) *
+                                   8 * AV_TIME_BASE) /
+                                  av_rescale_q(os->max_pts - os->start_pts,
+                                               st->time_base, AV_TIME_BASE_Q);
+            else
+                /* This (else) should not happen anymore after rescaling seg_duration_ts.
+                 * But just to be on the safe side I will keep this.
+                 */
+                os->muxer_overhead = ((int64_t) (range_length - os->total_pkt_size) *
+                                  8 * AV_TIME_BASE) * st->time_base.num / st->time_base.den;
+        }
 
         if (!os->muxer_overhead && os->max_pts > os->start_pts)
             os->muxer_overhead = ((int64_t) (range_length - os->total_pkt_size) *
@@ -2142,6 +2410,47 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
         seg_end_duration = os->seg_duration;
     }
 
+    if (s->prev_pts != AV_NOPTS_VALUE) {
+        int64_t delta = pkt->pts - s->prev_pts;
+        delta = delta > 0 ? delta : (-1)*delta;
+        if (delta < s->min_frame_duration)
+            s->min_frame_duration = delta;
+        if (delta > s->max_frame_duration)
+            s->max_frame_duration = delta;
+    }
+
+    int64_t frame_duration_variation = 0;
+
+    if (s->prev_pts != AV_NOPTS_VALUE)
+        frame_duration_variation = (s->max_frame_duration - s->min_frame_duration) * 2;
+
+    /*
+     * This is just for backward compatibility and not break anything.
+     * (we used to set frame_duration_variation = 1)
+     */
+    if (frame_duration_variation == 0)
+        frame_duration_variation = 1;
+
+    s->prev_pts = pkt->pts;
+
+#if 0
+    av_log(s, AV_LOG_INFO, "dash_write_packet is_key=%d pts=%"PRId64" duration=%"PRId64" start_pts=%"PRId64
+        " max_pts=%"PRId64" elapsed_duration=%"PRId64" seg_duration_ts=%"PRId64" frame_duration_variation=%"PRId64
+        " min_frame_duration=%"PRId64" max_frame_duration=%"PRId64,
+        pkt->flags & AV_PKT_FLAG_KEY, pkt->pts, pkt->duration, os->start_pts, os->max_pts,
+        elapsed_duration, c->seg_duration_ts, frame_duration_variation,
+        s->min_frame_duration, s->max_frame_duration);
+#endif
+    /*
+     * For the rare case frame duration is not a timebase integer (for example 1501.5)
+     * or if frame duration is not constant we need to accommodate for the variation.
+     * When frame duration is fractional, the variation is always 1
+     * In another case, like PBS live stream, the packet duration is variable (for example 2970, or 3060).
+     * In this case, the cutting might not happen in exact PTS that is expected. Therefore, cut within a window
+     * or interval around expected PTS.
+     */
+
+
     if (os->parser &&
         (os->frag_type == FRAG_TYPE_PFRAMES ||
          as->trick_idx >= 0)) {
@@ -2180,6 +2489,11 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
             format_date(os->producer_reference_time_str,
                         sizeof(os->producer_reference_time_str),
                         os->producer_reference_time.wallclock);
+
+        av_log(s, AV_LOG_DEBUG, "dash_write_packet end of segment pts=%"PRId64" duration=%"PRId64" start_pts=%"PRId64
+            " max_pts=%"PRId64" elapsed_duration=%"PRId64" seg_duration_ts=%"PRId64,
+            pkt->pts, pkt->duration, os->start_pts, os->max_pts, elapsed_duration, c->seg_duration_ts);
+
 
         if ((ret = dash_flush(s, 0, pkt->stream_index)) < 0)
             return ret;
@@ -2240,8 +2554,10 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
     //open the output context when the first frame of a segment is ready
     if (!c->single_file && os->packets_written == 1) {
         AVDictionary *opts = NULL;
+        char stream_index[10];
         const char *proto = avio_find_protocol_name(s->url);
         int use_rename = proto && !strcmp(proto, "file");
+        use_rename = 0; // PENDING(SSS) make proto 'buf'
         if (os->segment_type == SEGMENT_TYPE_MP4)
             write_styp(os->ctx->pb);
         os->filename[0] = os->full_path[0] = os->temp_path[0] = '\0';
@@ -2266,6 +2582,9 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
             write_manifest(s, 0);
         }
 
+        if ((ret = aes_init(c, os)) != 0)
+            return ret;
+
         if (c->lhls) {
             char *prefetch_url = use_rename ? NULL : os->filename;
             write_hls_media_playlist(os, s, pkt->stream_index, 0, prefetch_url);
@@ -2279,7 +2598,7 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
         avio_flush(os->ctx->pb);
         len = avio_get_dyn_buf (os->ctx->pb, &buf);
         if (os->out) {
-            avio_write(os->out, buf + os->written_len, len - os->written_len);
+            dashenc_avio_write(os, buf + os->written_len, len - os->written_len);
             avio_flush(os->out);
         }
         os->written_len = len;
@@ -2390,7 +2709,7 @@ static const AVOption options[] = {
     { "seg_duration", "segment duration (in seconds, fractional value can be set)", OFFSET(seg_duration), AV_OPT_TYPE_DURATION, { .i64 = 5000000 }, 0, INT_MAX, E },
     { "single_file", "Store all segments in one file, accessed using byte ranges", OFFSET(single_file), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
     { "single_file_name", "DASH-templated name to be used for baseURL. Implies storing all segments in one file, accessed using byte ranges", OFFSET(single_file_name), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, E },
-    { "streaming", "Enable/Disable streaming mode of output. Each frame will be moof fragment", OFFSET(streaming), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
+    { "streaming", "Enable/Disable streaming mode of output. Each frame will be moof fragment", OFFSET(streaming), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },    
     { "target_latency", "Set desired target latency for Low-latency dash", OFFSET(target_latency), AV_OPT_TYPE_DURATION, { .i64 = 0 }, 0, INT_MAX, E },
     { "timeout", "set timeout for socket I/O operations", OFFSET(timeout), AV_OPT_TYPE_DURATION, { .i64 = -1 }, -1, INT_MAX, .flags = E },
     { "update_period", "Set the mpd update interval", OFFSET(update_period), AV_OPT_TYPE_INT64, {.i64 = 0}, 0, INT64_MAX, E},
@@ -2399,6 +2718,18 @@ static const AVOption options[] = {
     { "utc_timing_url", "URL of the page that will return the UTC timestamp in ISO format", OFFSET(utc_timing_url), AV_OPT_TYPE_STRING, { 0 }, 0, 0, E },
     { "window_size", "number of segments kept in the manifest", OFFSET(window_size), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, E },
     { "write_prft", "Write producer reference time element", OFFSET(write_prft), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, E},
+    { "seg_duration_ts", "segment duration timebase", OFFSET(seg_duration_ts), AV_OPT_TYPE_INT, { .i64 = 48048 }, 0, INT_MAX, E },
+    { "start_fragment_index", "starting frame sequence for fragmented mp4", OFFSET(start_fragment_index), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, E },
+    { "frame_duration_ts", "frame duration timebase", OFFSET(frame_duration_ts), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, E },
+    { "start_segment", "Specify the index of the first segment (which by default is 1)", OFFSET(start_segment), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, INT_MAX, E },
+    { "encryption_scheme", "Configures the Common Encryption scheme, allowed values are none, cenc-aes-ctr, cenc-aes-cbc-pattern", OFFSET(encryption_scheme_str), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
+    { "encryption_key", "The media encryption key (hex)", OFFSET(encryption_key), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
+    { "encryption_kid", "The media encryption key identifier (hex)", OFFSET(encryption_kid), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
+    { "encryption_iv", "Specify the media encryption iv (hex)", OFFSET(encryption_iv), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
+    { "hls_enc", "enable AES128 encryption support", OFFSET(aes_encrypt), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, E},
+    { "hls_enc_key", "hex-coded 16 byte key to encrypt the segments", OFFSET(aes_key_hex), AV_OPT_TYPE_STRING, .flags = E},
+    { "hls_enc_key_url", "url to access the key to decrypt the segments", OFFSET(aes_key_url), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, E},
+    { "hls_enc_iv", "hex-coded 16 byte initialization vector", OFFSET(aes_iv_hex), AV_OPT_TYPE_STRING, .flags = E},
     { NULL },
 };
 

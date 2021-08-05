@@ -133,4 +133,5 @@ static av_always_inline uint32_t pack16to32(unsigned a, unsigned b)
 #endif
 }
 
+
 #endif /* AVCODEC_H264_PARSE_H */
