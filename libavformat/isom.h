@@ -111,6 +111,12 @@ typedef struct MOVSbgp {
     unsigned int index;
 } MOVSbgp;
 
+typedef enum {
+    MOV_ENC_NONE = 0,
+    MOV_ENC_CENC_AES_CTR,
+    MOV_ENC_CENC_AES_CBC_PATTERN
+} MOVEncryptionScheme;
+
 typedef struct MOVEncryptionIndex {
     // Individual encrypted samples.  If there are no elements, then the default
     // settings will be used.

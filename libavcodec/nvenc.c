@@ -280,7 +280,7 @@ static av_cold int nvenc_load_libraries(AVCodecContext *avctx)
     if (err != NV_ENC_SUCCESS)
         return nvenc_print_error(avctx, err, "Failed to query nvenc max version");
 
-    av_log(avctx, AV_LOG_VERBOSE, "Loaded Nvenc version %d.%d\n", nvenc_max_ver >> 4, nvenc_max_ver & 0xf);
+    av_log(avctx, AV_LOG_INFO, "Loaded Nvenc version %d.%d\n", nvenc_max_ver >> 4, nvenc_max_ver & 0xf);
 
     if ((NVENCAPI_MAJOR_VERSION << 4 | NVENCAPI_MINOR_VERSION) > nvenc_max_ver) {
         av_log(avctx, AV_LOG_ERROR, "Driver does not support the required nvenc API version. "

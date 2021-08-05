@@ -379,6 +379,11 @@ int ff_alloc_timecode_sei(const AVFrame *frame, AVRational rate, size_t prefix_l
                      void **data, size_t *sei_size);
 
 /**
+ * Returns an array of H2645NALs
+ */
+void* avpriv_h264_extract_nals(AVCodecParserContext *s);
+
+/**
  * Get an estimated video bitrate based on frame size, frame rate and coded
  * bits per pixel.
  */

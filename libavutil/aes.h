@@ -49,6 +49,11 @@ struct AVAES *av_aes_alloc(void);
 int av_aes_init(struct AVAES *a, const uint8_t *key, int key_bits, int decrypt);
 
 /**
+ * Enable pattern encryption
+ */
+void av_aes_set_pattern(struct AVAES *a, int crypt_byte_block, int skip_byte_block);
+
+/**
  * Encrypt or decrypt a buffer using a previously initialized context.
  * @param count number of 16 byte blocks
  * @param dst destination array, can be equal to src

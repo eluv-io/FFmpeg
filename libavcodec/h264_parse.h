@@ -90,4 +90,5 @@ int ff_h264_decode_extradata(const uint8_t *data, int size, H264ParamSets *ps,
  */
 int ff_h264_get_profile(const SPS *sps);
 
+
 #endif /* AVCODEC_H264_PARSE_H */
