@@ -149,6 +149,7 @@ typedef struct OutputStream {
     int64_t gop_size;
     AVRational sar;
     int coding_dependency;
+
     struct AVAES *aes_context;
     int aes_encrypt;
     uint8_t aes_iv[KEYSIZE];
@@ -217,11 +218,11 @@ typedef struct DASHContext {
     AVRational min_playback_rate;
     AVRational max_playback_rate;
     int64_t update_period;
+    int start_segment;
 
     int64_t seg_duration_ts;
     int64_t start_fragment_index;
     int64_t frame_duration_ts;
-    int start_segment;
 
     // Pass-through options to movenc -PTT
     char *encryption_scheme_str;
@@ -1825,6 +1826,20 @@ static int dash_init(AVFormatContext *s)
                 // skip_sidx : Reduce bitrate overhead
                 // skip_trailer : Avoids growing memory usage with time
                 av_dict_set(&opts, "movflags", "+dash+delay_moov+skip_sidx+skip_trailer", AV_DICT_APPEND);
+            else if (c->start_segment > 1) {
+                //av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov+frag_discont", 0);
+                av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov+frag_discont", 0);
+            } else {
+                //av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov", 0);
+                av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov", 0);
+                /*
+                 * Notes:
+                 * - frag_custom+dash+delay_moov - correct segments, single moof  (frames reordered)
+                 * - frag_every_frame+dash+delay_moov - moof per frame, correct data
+                 */
+            }
+
+            /*
             else {
                 if (c->global_sidx) {
                     if (c->start_segment > 1) {
@@ -1840,6 +1855,7 @@ static int dash_init(AVFormatContext *s)
                     }
                 }
             }
+            */
 
             if (c->start_fragment_index > 1) {
                 char start_fragment_index_str[128];
@@ -2424,6 +2440,20 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     s->prev_pts = pkt->pts;
 
+
+    if (os->parser &&
+        (os->frag_type == FRAG_TYPE_PFRAMES ||
+         as->trick_idx >= 0)) {
+        // Parse the packets only in scenarios where it's needed
+        uint8_t *data;
+        int size;
+        av_parser_parse2(os->parser, os->parser_avctx,
+                         &data, &size, pkt->data, pkt->size,
+                         pkt->pts, pkt->dts, pkt->pos);
+
+        os->coding_dependency |= os->parser->pict_type != AV_PICTURE_TYPE_I;
+    }
+
 #if 0
     av_log(s, AV_LOG_INFO, "dash_write_packet is_key=%d pts=%"PRId64" duration=%"PRId64" start_pts=%"PRId64
         " max_pts=%"PRId64" elapsed_duration=%"PRId64" seg_duration_ts=%"PRId64" frame_duration_variation=%"PRId64
@@ -2441,23 +2471,12 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
      * or interval around expected PTS.
      */
 
-
-    if (os->parser &&
-        (os->frag_type == FRAG_TYPE_PFRAMES ||
-         as->trick_idx >= 0)) {
-        // Parse the packets only in scenarios where it's needed
-        uint8_t *data;
-        int size;
-        av_parser_parse2(os->parser, os->parser_avctx,
-                         &data, &size, pkt->data, pkt->size,
-                         pkt->pts, pkt->dts, pkt->pos);
-
-        os->coding_dependency |= os->parser->pict_type != AV_PICTURE_TYPE_I;
-    }
-
     if (pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
-        av_compare_ts(elapsed_duration, st->time_base,
-                      seg_end_duration, AV_TIME_BASE_Q) >= 0) {
+        elapsed_duration >= c->seg_duration_ts)
+        /* av_compare_ts(elapsed_duration, st->time_base,
+                      seg_end_duration, AV_TIME_BASE_Q) >= 0)
+        */
+    {
         if (!c->has_video || st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             c->last_duration = av_rescale_q(pkt->pts - os->start_pts,
                     st->time_base,
@@ -2560,6 +2579,8 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
         snprintf(os->temp_path, sizeof(os->temp_path),
                  use_rename ? "%s.tmp" : "%s", os->full_path);
         set_http_options(&opts, c);
+        sprintf(stream_index, "%d", pkt->stream_index);
+        av_dict_set(&opts, "stream_index", stream_index, 0);
         ret = dashenc_io_open(s, &os->out, os->temp_path, &opts);
         av_dict_free(&opts);
         if (ret < 0) {
@@ -2574,7 +2595,7 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
     }
 
     //write out the data immediately in streaming mode
-    if (c->streaming && os->segment_type == SEGMENT_TYPE_MP4) {
+    if (1 /* PENDING(SSS) figure out flag */ || (c->streaming && os->segment_type == SEGMENT_TYPE_MP4)) {
         int len = 0;
         uint8_t *buf = NULL;
         avio_flush(os->ctx->pb);
