@@ -1823,23 +1823,10 @@ static int dash_init(AVFormatContext *s)
 
         if (os->segment_type == SEGMENT_TYPE_MP4) {
             if (c->streaming)
+                // frag_every_frame : Allows lower latency streaming
                 // skip_sidx : Reduce bitrate overhead
                 // skip_trailer : Avoids growing memory usage with time
-                av_dict_set(&opts, "movflags", "+dash+delay_moov+skip_sidx+skip_trailer", AV_DICT_APPEND);
-            else if (c->start_segment > 1) {
-                //av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov+frag_discont", 0);
-                av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov+frag_discont", 0);
-            } else {
-                //av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov", 0);
-                av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov", 0);
-                /*
-                 * Notes:
-                 * - frag_custom+dash+delay_moov - correct segments, single moof  (frames reordered)
-                 * - frag_every_frame+dash+delay_moov - moof per frame, correct data
-                 */
-            }
-
-            /*
+                av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov+skip_sidx+skip_trailer", 0);
             else {
                 if (c->global_sidx) {
                     if (c->start_segment > 1) {
@@ -1855,7 +1842,6 @@ static int dash_init(AVFormatContext *s)
                     }
                 }
             }
-            */
 
             if (c->start_fragment_index > 1) {
                 char start_fragment_index_str[128];
