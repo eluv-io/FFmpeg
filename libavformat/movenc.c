@@ -5539,7 +5539,7 @@ static int mov_auto_flush_fragment(AVFormatContext *s, int force)
     return ret;
 }
 
-#define DTS_THRESHOLD   1
+#define DTS_THRESHOLD   0
 
 static int check_pkt(AVFormatContext *s, AVPacket *pkt)
 {
