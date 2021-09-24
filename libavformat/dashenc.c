@@ -728,6 +728,7 @@ static void dash_free(AVFormatContext *s)
             else
                 avio_close(os->ctx->pb);
         }
+        aes_free(os);
         ff_format_io_close(s, &os->out);
         avformat_free_context(os->ctx);
         avcodec_free_context(&os->parser_avctx);
@@ -738,7 +739,6 @@ static void dash_free(AVFormatContext *s)
         av_freep(&os->single_file_name);
         av_freep(&os->init_seg_name);
         av_freep(&os->media_seg_name);
-        aes_free(os);
     }
     av_freep(&c->streams);
 
