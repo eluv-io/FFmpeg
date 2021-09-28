@@ -281,7 +281,8 @@ static void aes_free(OutputStream *os) {
 
         memset(&os->aes_pad[os->aes_pad_len], pad, pad);
         av_aes_crypt(os->aes_context, out_buf, os->aes_pad, 1, os->aes_iv, 0);
-        avio_write(os->out, out_buf, BLOCKSIZE);
+        if (os->out)
+            avio_write(os->out, out_buf, BLOCKSIZE);
     }
     av_freep(&os->aes_context);
     av_freep(&os->aes_write_buf);
@@ -744,7 +745,6 @@ static void dash_free(AVFormatContext *s)
             else
                 avio_close(os->ctx->pb);
         }
-        aes_free(os);
         ff_format_io_close(s, &os->out);
         avformat_free_context(os->ctx);
         avcodec_free_context(&os->parser_avctx);
@@ -755,6 +755,7 @@ static void dash_free(AVFormatContext *s)
         av_freep(&os->single_file_name);
         av_freep(&os->init_seg_name);
         av_freep(&os->media_seg_name);
+        aes_free(os);
     }
     av_freep(&c->streams);
 
