@@ -682,12 +682,13 @@ static int cuvid_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
 static av_cold int cuvid_decode_end(AVCodecContext *avctx)
 {
     CuvidContext *ctx = avctx->priv_data;
+    CUcontext dummy;
     av_fifo_freep(&ctx->frame_queue);
 
     if (ctx->hwdevice) {
         AVHWDeviceContext *device_ctx = (AVHWDeviceContext *)ctx->hwdevice->data;
         AVCUDADeviceContext *device_hwctx = device_ctx->hwctx;
-        CUcontext dummy, cuda_ctx = device_hwctx->cuda_ctx;
+        CUcontext cuda_ctx = device_hwctx->cuda_ctx;
 
         ctx->cudl->cuCtxPushCurrent(cuda_ctx);
     }
