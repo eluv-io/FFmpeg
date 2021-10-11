@@ -699,7 +699,8 @@ static av_cold int cuvid_decode_end(AVCodecContext *avctx)
     if (ctx->cudecoder)
         ctx->cvdl->cuvidDestroyDecoder(ctx->cudecoder);
 
-    ctx->cudl->cuCtxPopCurrent(&dummy);
+    if (ctx->cudl)
+        ctx->cudl->cuCtxPopCurrent(&dummy);
 
     ctx->cudl = NULL;
 
