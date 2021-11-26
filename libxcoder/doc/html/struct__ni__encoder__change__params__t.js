@@ -1,0 +1,25 @@
+var struct__ni__encoder__change__params__t =
+[
+    [ "bitRate", "struct__ni__encoder__change__params__t.html#a1e9179bd74ecf129be3126eedf45f06e", null ],
+    [ "enable_option", "struct__ni__encoder__change__params__t.html#a3a1573f9a2391e1fa6fcb4f01856eddd", null ],
+    [ "encodeVuiRbsp", "struct__ni__encoder__change__params__t.html#a533caa96b0298a966c58399f467d8543", null ],
+    [ "fillerEnable", "struct__ni__encoder__change__params__t.html#a111332fd062dcbad56db90b66da5c8c4", null ],
+    [ "hvsQPEnable", "struct__ni__encoder__change__params__t.html#a9aec7688f6182ab7b7270c8e7ea2ea1b", null ],
+    [ "hvsQpScale", "struct__ni__encoder__change__params__t.html#a89384eb0d4371d84a52dd9d665215f79", null ],
+    [ "intraPeriod", "struct__ni__encoder__change__params__t.html#ab385dc1487b003352d169be57205c025", null ],
+    [ "intraQP", "struct__ni__encoder__change__params__t.html#a077aa2d282a148110a8b38241e65fe00", null ],
+    [ "maxDeltaQp", "struct__ni__encoder__change__params__t.html#a6f0b0a83598203a60f069271ce48c3cf", null ],
+    [ "maxQpB", "struct__ni__encoder__change__params__t.html#a13faeb393a1c1e4aa154405bb5abb059", null ],
+    [ "maxQpI", "struct__ni__encoder__change__params__t.html#a874c189279f65854f52101c60f2956fb", null ],
+    [ "maxQpP", "struct__ni__encoder__change__params__t.html#aa26ebcac91a981e85d08fca531c2975c", null ],
+    [ "mbLevelRcEnable", "struct__ni__encoder__change__params__t.html#a78f1c78d8dcd5abf6f547b77bd3743b5", null ],
+    [ "minQpB", "struct__ni__encoder__change__params__t.html#adbcc0c8e422026d9a1d4597b3fc7cfc3", null ],
+    [ "minQpI", "struct__ni__encoder__change__params__t.html#ac4954d3d19a69e29f4ce3a0aca301f84", null ],
+    [ "minQpP", "struct__ni__encoder__change__params__t.html#ab2c629d90fa0cd4417eb55353c422b8a", null ],
+    [ "repeatHeaders", "struct__ni__encoder__change__params__t.html#a2cde34c2e1bccd0796f6bd0df0ee1d1e", null ],
+    [ "reserved", "struct__ni__encoder__change__params__t.html#afa15a6e319704eaf4813919ebe99f6bf", null ],
+    [ "vbvBufferSize", "struct__ni__encoder__change__params__t.html#a625415b8300ee97c96f5d1adb15e4c9b", null ],
+    [ "vuiDataSizeBits", "struct__ni__encoder__change__params__t.html#a6116d7e7c47a472739ffaf5d48dccc47", null ],
+    [ "vuiDataSizeBytes", "struct__ni__encoder__change__params__t.html#a93c307207b21fc4fc7657e97dec41edd", null ],
+    [ "vuiRbsp", "struct__ni__encoder__change__params__t.html#a02bf72488b31250a9bb03ccba4557153", null ]
+];

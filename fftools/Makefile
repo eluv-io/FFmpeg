@@ -13,6 +13,7 @@ OBJS-ffmpeg                        += fftools/ffmpeg_opt.o fftools/ffmpeg_filter
 OBJS-ffmpeg-$(CONFIG_LIBMFX)       += fftools/ffmpeg_qsv.o
 ifndef CONFIG_VIDEOTOOLBOX
 OBJS-ffmpeg-$(CONFIG_VDA)          += fftools/ffmpeg_videotoolbox.o
+OBJS-ffmpeg-$(CONFIG_NI)           += fftools/ffmpeg_ni.o
 endif
 OBJS-ffmpeg-$(CONFIG_VIDEOTOOLBOX) += fftools/ffmpeg_videotoolbox.o
 

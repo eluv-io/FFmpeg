@@ -50,6 +50,8 @@ enum HEVCNALUnitType {
     HEVC_NAL_CRA_NUT        = 21,
     HEVC_NAL_RSV_IRAP_VCL22 = 22,
     HEVC_NAL_RSV_IRAP_VCL23 = 23,
+    // NETINT: duplicate old enumeration name for IRAP_VCL23
+    HEVC_NAL_IRAP_VCL23     = 23,
     HEVC_NAL_RSV_VCL24      = 24,
     HEVC_NAL_RSV_VCL25      = 25,
     HEVC_NAL_RSV_VCL26      = 26,

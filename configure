@@ -289,6 +289,8 @@ External library support:
   --enable-libwebp         enable WebP encoding via libwebp [no]
   --enable-libx264         enable H.264 encoding via x264 [no]
   --enable-libx265         enable HEVC encoding via x265 [no]
+  --enable-libxcoder       enable NetInt Xcoder [no]
+  --enable-ni              enable NetInt HWaccel [no]
   --enable-libxavs         enable AVS encoding via xavs [no]
   --enable-libxavs2        enable AVS2 encoding via xavs2 [no]
   --enable-libxcb          enable X11 grabbing using XCB [autodetect]
@@ -1727,6 +1729,7 @@ EXTERNAL_LIBRARY_GPL_LIST="
     libvidstab
     libx264
     libx265
+    libxcoder
     libxavs
     libxavs2
     libxvid
@@ -1867,6 +1870,7 @@ HWACCEL_LIBRARY_LIST="
     libmfx
     mmal
     omx
+    ni
     opencl
     vulkan
 "
@@ -2407,6 +2411,7 @@ CONFIG_EXTRA="
     mpegvideo
     mpegvideoenc
     mss34dsp
+    ni
     pixblockdsp
     qpeldsp
     qsv
@@ -3292,6 +3297,10 @@ libx264_encoder_select="atsc_a53"
 libx264rgb_encoder_deps="libx264 x264_csp_bgr"
 libx264rgb_encoder_select="libx264_encoder"
 libx265_encoder_deps="libx265"
+h264_ni_decoder_deps="libxcoder"
+h265_ni_encoder_deps="libxcoder"
+h265_ni_decoder_deps="libxcoder"
+h264_ni_encoder_deps="libxcoder"
 libxavs_encoder_deps="libxavs"
 libxavs2_encoder_deps="libxavs2"
 libxvid_encoder_deps="libxvid"
@@ -3620,6 +3629,7 @@ scale2ref_filter_deps="swscale"
 scale_filter_deps="swscale"
 scale_qsv_filter_deps="libmfx"
 scdet_filter_select="scene_sad"
+sdl_filter_deps="swscale sdl2"
 select_filter_select="scene_sad"
 sharpness_vaapi_filter_deps="vaapi"
 showcqt_filter_deps="avcodec avformat swscale"
@@ -4649,9 +4659,9 @@ probe_cc(){
         $_cc --vsn | grep -q RVCT && armcc_opt=rvct || armcc_opt=armcc
         _flags="--arm_linux_config_file=$armcc_conf --translate_gcc"
         as_default="${cross_prefix}gcc"
-        _depflags='-MMD'
+       _depflags='-MMD'
         _cflags_speed='-O3'
-        _cflags_size='-Os'
+       _cflags_size='-Os'
     elif $_cc -v 2>&1 | grep -q clang && ! $_cc -? > /dev/null 2>&1; then
         _type=clang
         _ident=$($_cc --version 2>/dev/null | head -n1)
@@ -6490,6 +6500,7 @@ enabled libx264           && { check_pkg_config libx264 x264 "stdint.h x264.h" x
                              check_cpp_condition libx262 x264.h "X264_MPEG2"
 enabled libx265           && require_pkg_config libx265 x265 x265.h x265_api_get &&
                              require_cpp_condition libx265 x265.h "X265_BUILD >= 70"
+enabled libxcoder         && require_pkg_config libxcoder xcoder ni_device_api.h ni_device_open
 enabled libxavs           && require libxavs "stdint.h xavs.h" xavs_encoder_encode "-lxavs $pthreads_extralibs $libm_extralibs"
 enabled libxavs2          && require_pkg_config libxavs2 "xavs2 >= 1.3.0" "stdint.h xavs2.h" xavs2_api_get
 enabled libxvid           && require libxvid xvid.h xvid_global -lxvidcore

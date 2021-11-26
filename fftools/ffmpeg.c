@@ -1759,9 +1759,27 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
             float fps;
 
             frame_number = ost->frame_number;
-            fps = t > 1 ? frame_number / t : 0;
+
+            // NETINT: add option to display windowed average FPS
+            if (ni_interval_fps > 0) { // if ni_interval_fps arg selected, calculate windowed average FPS
+                float interval = (cur_time - ost->ni_prev_fps_measurement_time)/ 1000000.0 ;
+                if (interval >= (float)ni_interval_fps) { // update fps at every ni_interval_fps
+                    fps = (frame_number - ost->ni_prev_frame_count) / interval;
+                    // store variables for tracking windowed average FPS in OutputStream object
+                    ost->ni_prev_fps = fps;
+                    ost->ni_prev_fps_measurement_time = cur_time;
+                    ost->ni_prev_frame_count = frame_number;
+                } else { // display FPS from previous interval if windowing interval not yet reached
+                    fps = ost->ni_prev_fps;
+                }
+            } else { // else, use default FFmpeg default fps calculation
+                fps = t > 1 ? frame_number / t : 0;
+            }
+
+            // NETINT: add option to display windowed average FPS
+            // in addition to default behavior, display 1 decimal place in FPS if ni_interval_fps selected
             av_bprintf(&buf, "frame=%5d fps=%3.*f q=%3.1f ",
-                     frame_number, fps < 9.95, fps, q);
+                       frame_number, (fps < 9.95) || ni_interval_fps, fps, q);
             av_bprintf(&buf_script, "frame=%d\n", frame_number);
             av_bprintf(&buf_script, "fps=%.2f\n", fps);
             av_bprintf(&buf_script, "stream_%d_%d_q=%.1f\n",
@@ -2672,6 +2690,9 @@ static int process_input_packet(InputStream *ist, const AVPacket *pkt, int no_eo
             ret = decode_video    (ist, repeating ? NULL : avpkt, &got_output, &duration_pts, !pkt,
                                    &decode_failed);
             if (!repeating || !pkt || got_output) {
+                if (got_output && repeating) { // NETINT: if a frame is already decoded no need to update DTS or PTS
+                    break;
+                }
                 if (pkt && pkt->duration) {
                     duration_dts = av_rescale_q(pkt->duration, ist->st->time_base, AV_TIME_BASE_Q);
                 } else if(ist->dec_ctx->framerate.num != 0 && ist->dec_ctx->framerate.den != 0) {
@@ -3536,6 +3557,18 @@ static int init_output_stream(OutputStream *ost, AVFrame *frame,
         ret = init_output_stream_encode(ost, frame);
         if (ret < 0)
             return ret;
+
+        // NETINT: automatically enabling GenHdrs for MKV and HLS container format support
+        if (!strcmp(output_files[ost->file_index]->ctx->oformat->name, "matroska") ||
+            !strcmp(output_files[ost->file_index]->ctx->oformat->name, "hls") ||
+            !strcmp(output_files[ost->file_index]->ctx->oformat->name, "asf")) {
+            AVDictionaryEntry *t;
+            if ((t = av_dict_get(ost->encoder_opts, "xcoder-params", NULL, 0))) {
+                av_dict_set(&ost->encoder_opts, "xcoder-params", ":GenHdrs=1", AV_DICT_APPEND);
+            }else{
+                av_opt_set(ost->enc_ctx->priv_data, "xcoder-params", "GenHdrs=1", 0);
+            }
+        }
 
         if ((ist = get_input_stream(ost)))
             dec = ist->dec_ctx;

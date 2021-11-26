@@ -1,0 +1,23 @@
+var searchData=
+[
+  ['betaoffsetdiv2_2247',['betaOffsetDiv2',['../struct__ni__t408__config__t.html#a4025d29cf80610df5b8debd77941bba1',1,'_ni_t408_config_t']]],
+  ['bgdeltaqp_2248',['bgDeltaQp',['../struct__ni__t408__config__t.html#ace278eba9933c8ae9d069285e2b1fb28',1,'_ni_t408_config_t']]],
+  ['bgdetectenable_2249',['bgDetectEnable',['../struct__ni__t408__config__t.html#a0fc7213a1739d23598670c71e94ac82a',1,'_ni_t408_config_t']]],
+  ['bglambdaqp_2250',['bgLambdaQp',['../struct__ni__t408__config__t.html#ad7ac20e9c16bbc44823517ac1aeb8208',1,'_ni_t408_config_t']]],
+  ['bgthrdiff_2251',['bgThrDiff',['../struct__ni__t408__config__t.html#a7af0e82843279faaad3e89c175665f60',1,'_ni_t408_config_t']]],
+  ['bgthrmeandiff_2252',['bgThrMeanDiff',['../struct__ni__t408__config__t.html#a823c4e808a39c1e81364083086bf3be7',1,'_ni_t408_config_t']]],
+  ['bit_5fdepth_2253',['bit_depth',['../struct__ni__frame.html#ae305b27c7d1e81dd144a9f482f8f063b',1,'_ni_frame::bit_depth()'],['../struct__ni__hwframe__surface.html#aed2d21a7a532714c83784bc1bb0b6cb0',1,'_ni_hwframe_surface::bit_depth()'],['../struct__ni__metadata__common.html#ae305b27c7d1e81dd144a9f482f8f063b',1,'_ni_metadata_common::bit_depth()']]],
+  ['bit_5fdepth_5ffactor_2254',['bit_depth_factor',['../struct__ni__session__context.html#a21e9052c50b7c28938680076fb9e7974',1,'_ni_session_context::bit_depth_factor()'],['../struct__ni__init__frames__params__t.html#aa3aa23696df7b2413b3d9ffbdf372e0f',1,'_ni_init_frames_params_t::bit_depth_factor()']]],
+  ['bitallocmode_2255',['bitAllocMode',['../struct__ni__t408__config__t.html#a6346a66e3a3e2a1b68f8c6fd8e9e4ef3',1,'_ni_t408_config_t']]],
+  ['bitrate_2256',['bitRate',['../struct__ni__encoder__change__params__t.html#a1e9179bd74ecf129be3126eedf45f06e',1,'_ni_encoder_change_params_t::bitRate()'],['../struct__ni__encoder__params.html#ab5d8e1788d02d0e52941a0778776e289',1,'_ni_encoder_params::bitrate()']]],
+  ['blk_5fio_5fhandle_2257',['blk_io_handle',['../struct__ni__session__context.html#aa375b9ac96074ffc858e6e9ecfb915bd',1,'_ni_session_context']]],
+  ['blk_5fname_2258',['blk_name',['../struct__ni__device__info.html#a6530e9a6673f9987f61edc62afb5d486',1,'_ni_device_info']]],
+  ['blk_5fxcoder_5fname_2259',['blk_xcoder_name',['../struct__ni__session__context.html#a065c16431b3290044ccbaa99e352f64e',1,'_ni_session_context']]],
+  ['bs_5fframe_5fsize_2260',['bs_frame_size',['../struct__ni__metadata__enc__bstream.html#a601183e793f53cdcb0d96113c59f3b08',1,'_ni_metadata_enc_bstream']]],
+  ['buf_2261',['buf',['../struct__ni__buf__t.html#a5bc5fa69bee375df074734a2c4858604',1,'_ni_buf_t']]],
+  ['buf_5favail_5fsize_2262',['buf_avail_size',['../struct__ni__instance__buf__info.html#acb4db5829885430e1e0e49f8b7a4f843',1,'_ni_instance_buf_info']]],
+  ['buf_5flone_5fsei_2263',['buf_lone_sei',['../struct__ni__session__context.html#a941479cd8e3cdd47f9fc1f1f84f3676e',1,'_ni_session_context']]],
+  ['buf_5fsize_2264',['buf_size',['../struct__ni__buf__pool__t.html#a50820ebe716191dad920c497510b3220',1,'_ni_buf_pool_t']]],
+  ['buffer_5fpool_2265',['buffer_pool',['../struct__ni__session__context.html#a1c877d9cbf37f00671ec6225961d7900',1,'_ni_session_context']]],
+  ['buffer_5fsize_2266',['buffer_size',['../struct__ni__frame.html#ab4bab919e0d995ad7249474cd9028105',1,'_ni_frame::buffer_size()'],['../struct__ni__packet.html#ab4bab919e0d995ad7249474cd9028105',1,'_ni_packet::buffer_size()']]]
+];

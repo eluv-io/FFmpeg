@@ -1,0 +1,25 @@
+var searchData=
+[
+  ['_5fni_5fcodec_5fformat_3085',['_ni_codec_format',['../ni__device__api_8h.html#ac900ea5dfbebbd891e2c9825a3b568d2',1,'ni_device_api.h']]],
+  ['_5fni_5fcodec_5fhw_5factions_3086',['_ni_codec_hw_actions',['../ni__device__api_8h.html#ae67182fcaa9f32d13b6662d622193172',1,'ni_device_api.h']]],
+  ['_5fni_5fcustom_5fsei_5flocation_3087',['_ni_custom_sei_location',['../ni__device__api_8h.html#a1a34635879d67c5c619d6121bf3086d3',1,'ni_device_api.h']]],
+  ['_5fni_5fgop_5fpreset_5fidx_3088',['_ni_gop_preset_idx',['../ni__device__api__priv_8h.html#a1828a0c2217ab6bbe8a9106d8478920e',1,'ni_device_api_priv.h']]],
+  ['_5fni_5fnvme_5fadmin_5fopcode_3089',['_ni_nvme_admin_opcode',['../ni__nvme_8h.html#a17a0cec03abc8d9d6926a9a34c978b6c',1,'ni_nvme.h']]],
+  ['_5fni_5fnvme_5fopcode_3090',['_ni_nvme_opcode',['../ni__defs_8h.html#a38558e9c6ef1bec10cc03acbdeb93a05',1,'ni_defs.h']]],
+  ['_5fni_5fparam_5fchange_5fflags_3091',['_ni_param_change_flags',['../ni__device__api_8h.html#af52402e5214f42cbcc2bd6c5a74472ac',1,'ni_device_api.h']]],
+  ['_5fni_5freconfig_3092',['_ni_reconfig',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938',1,'ni_device_api.h']]],
+  ['_5fni_5fsession_5frun_5fstate_3093',['_ni_session_run_state',['../ni__device__api_8h.html#a03492cefc27f6f2e8c42fad59b3caf44',1,'ni_device_api.h']]],
+  ['_5fni_5ft35_5fsei_5fmesg_5ftype_3094',['_ni_t35_sei_mesg_type',['../ni__device__api__priv_8c.html#a6783901e611affef6c486df6f2363c83',1,'ni_device_api_priv.c']]],
+  ['_5fni_5fxcoder_5fmgr_5fretcode_3095',['_ni_xcoder_mgr_retcode',['../ni__device__api__priv_8h.html#a8ac5568405a1bdf6b6eac522c713d308',1,'ni_device_api_priv.h']]],
+  ['_5fnvme_5fclose_5fxcoder_5fsubtype_3096',['_nvme_close_xcoder_subtype',['../ni__nvme_8h.html#ae70466377f57fad6c2e67b09ddd265cc',1,'ni_nvme.h']]],
+  ['_5fnvme_5fconfig_5fxcoder_5fconfig_5finstance_5fsubtype_3097',['_nvme_config_xcoder_config_instance_subtype',['../ni__nvme_8h.html#ad0937d1c212483fc3c89a2cf8187f60a',1,'ni_nvme.h']]],
+  ['_5fnvme_5fconfig_5fxcoder_5fconfig_5fsession_5fsubtype_3098',['_nvme_config_xcoder_config_session_subtype',['../ni__nvme_8h.html#a65f835ede954a580da6d2298c99b7715',1,'ni_nvme.h']]],
+  ['_5fnvme_5fconfig_5fxcoder_5fsubtype_3099',['_nvme_config_xcoder_subtype',['../ni__nvme_8h.html#ab3a76de5ec80367749775c8b6414dfd8',1,'ni_nvme.h']]],
+  ['_5fnvme_5fopen_5fxcoder_5fsubtype_3100',['_nvme_open_xcoder_subtype',['../ni__nvme_8h.html#ab2e68366a4957719494f9c76cc1f040c',1,'ni_nvme.h']]],
+  ['_5fnvme_5fquery_5fxcoder_5fgeneral_5fsubtype_3101',['_nvme_query_xcoder_general_subtype',['../ni__nvme_8h.html#a71d4633f9d95198a43b9d8e2a84ee880',1,'ni_nvme.h']]],
+  ['_5fnvme_5fquery_5fxcoder_5finstance_5fsubtype_3102',['_nvme_query_xcoder_instance_subtype',['../ni__nvme_8h.html#a6879a530d25cb56f08446ca222f343b1',1,'ni_nvme.h']]],
+  ['_5fnvme_5fquery_5fxcoder_5fsession_5fsubtype_3103',['_nvme_query_xcoder_session_subtype',['../ni__nvme_8h.html#a7bea84559125ff607292b0ea8c331ded',1,'ni_nvme.h']]],
+  ['_5fnvme_5fquery_5fxcoder_5fsubtype_3104',['_nvme_query_xcoder_subtype',['../ni__nvme_8h.html#a126edfa51257db8fc567a7c9f70e4ec2',1,'ni_nvme.h']]],
+  ['_5fnvme_5fread_5fxcoder_5fsubtype_3105',['_nvme_read_xcoder_subtype',['../ni__nvme_8h.html#ae8deabce39265ad2c2a5fba08775a2a5',1,'ni_nvme.h']]],
+  ['_5fnvme_5fwrite_5fxcoder_5fsubtype_3106',['_nvme_write_xcoder_subtype',['../ni__nvme_8h.html#a3b171390b2698987c6989a414a69b37c',1,'ni_nvme.h']]]
+];

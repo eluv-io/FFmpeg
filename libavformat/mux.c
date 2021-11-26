@@ -934,6 +934,8 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *out,
 {
     PacketList *pktl;
     int stream_count = 0;
+    // NETINT: fix scte35 handling in muxing buffer
+    int scte35_count = 0; // scte35 stream count
     int noninterleaved_count = 0;
     int i, ret;
     int eof = flush;
@@ -944,8 +946,15 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *out,
     }
 
     for (i = 0; i < s->nb_streams; i++) {
-        if (s->streams[i]->internal->last_in_packet_buffer) {
+        // NETINT: fix scte35 handling in muxing buffer
+        // flush scte35 in muxing buffer like regular AV streams to fix ffmpeg muxing output
+        // stall when scte35 packet DTS has large delta compared to regular AV packet DTS
+        if (s->streams[i]->internal->last_in_packet_buffer || s->streams[i]->codecpar->codec_id == AV_CODEC_ID_SCTE_35) { // treat scte35 like regular AV stream for flush consideration
             ++stream_count;
+            // NETINT: fix scte35 handling in muxing buffer
+            if (s->streams[i]->codecpar->codec_id == AV_CODEC_ID_SCTE_35) { // keep count of scte35 stream to avoid flushing when regular AV streams end
+                scte35_count++;
+            }
         } else if (s->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_ATTACHMENT &&
                    s->streams[i]->codecpar->codec_id != AV_CODEC_ID_VP8 &&
                    s->streams[i]->codecpar->codec_id != AV_CODEC_ID_VP9) {
@@ -1027,7 +1036,9 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *out,
         }
     }
 
-    if (stream_count && flush) {
+    // NETINT: fix scte35 handling in muxing buffer
+    // the muxing buffer requires at least one regular AV stream be present during flush, otherwise segfault
+    if (((stream_count - scte35_count) > 0) && flush) { // flush if there are non-scte35 streams present AND it is required
         AVStream *st;
         pktl = s->internal->packet_buffer;
         *out = pktl->pkt;

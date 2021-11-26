@@ -777,6 +777,10 @@ extern AVCodec ff_idf_decoder;
 
 /* external libraries, that shouldn't be used by default if one of the
  * above is available */
+extern AVCodec ff_h264_ni_decoder;
+extern AVCodec ff_h265_ni_decoder;
+extern AVCodec ff_h264_ni_encoder;
+extern AVCodec ff_h265_ni_encoder;
 extern AVCodec ff_aac_mf_encoder;
 extern AVCodec ff_ac3_mf_encoder;
 extern AVCodec ff_h263_v4l2m2m_encoder;
