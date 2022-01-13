@@ -698,6 +698,12 @@ static void dash_free(AVFormatContext *s)
             else
                 avio_close(os->ctx->pb);
         }
+        /*
+         * ff_format_io_close() releases and sets os->out to NULL,
+         * so aes_free() should be done before ff_format_io_close() to
+         * avoid a crash in avio_write(os->out, ...).
+         */
+        aes_free(os);
         ff_format_io_close(s, &os->out);
         if (os->ctx)
             avformat_free_context(os->ctx);
@@ -707,7 +713,6 @@ static void dash_free(AVFormatContext *s)
         av_freep(&os->single_file_name);
         av_freep(&os->init_seg_name);
         av_freep(&os->media_seg_name);
-        aes_free(os);
     }
     av_freep(&c->streams);
 
