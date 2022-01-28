@@ -58,8 +58,8 @@
 #include "vpcc.h"
 #include "dash.h"
 
-static const int BLOCKSIZE = 16;
-static const int KEYSIZE = 16;
+#define BLOCKSIZE   16
+#define KEYSIZE     16
 static const char AES_KEY_OUT_PATH[] = "key.bin";
 
 typedef enum {
