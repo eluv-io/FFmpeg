@@ -1,4 +1,4 @@
-DIST="dist"
+DIST=$PWD/"dist"
 
 if [ ! -d $DIST ]
 then
