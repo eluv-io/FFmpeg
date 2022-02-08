@@ -1,3 +1,5 @@
+#!/bin/bash
+
 DIST=$PWD/"dist"
 HOMEBREW_LOCATION="/opt/homebrew"
 CONFIGURE_HOMEBREW=""
