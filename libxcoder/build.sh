@@ -185,8 +185,10 @@ if [ $RC = 0 ]; then
         echo make install$extra_make_flags;
         make install$extra_make_flags;
     else
-        echo sudo make install$extra_make_flags;
-        sudo make install$extra_make_flags;
+        #echo sudo make install$extra_make_flags;
+        #sudo make install$extra_make_flags;
+        echo make install$extra_make_flags;
+        make install$extra_make_flags;
     fi
     RC=$?;
 else
