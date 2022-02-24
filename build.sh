@@ -8,6 +8,11 @@ fi
 
 CONFIGURE_TO_USE="./configure"
 
+(
+    cd libxcoder
+    build.sh
+)
+
 if [ "$(uname)" == "Darwin" ]; then
     if [ "$1" == "--DEBUG" ] || [ "$1" == "--debug" ]; then
         command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags=  --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --enable-videotoolbox --disable-lzma --disable-stripping --enable-debug=3 --extra-cflags=-ggdb --extra-cflags=-O0 --extra-cflags=-g"
