@@ -13,13 +13,13 @@ tracelog_timestamps=false;
 build_doxygen=false;
 encoder_sync_query=false;
 
-if [ `whoami` = root ]; then
-    read -p "Do you wish to execute with sudo [Y/N]? " -n 1 -r
-    echo   
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit
-    fi
-fi
+#if [ `whoami` = root ]; then
+#    read -p "Do you wish to execute with sudo [Y/N]? " -n 1 -r
+#    echo   
+#    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+#        exit
+#    fi
+#fi
 
 while [ "$1" != "" ]; do
     case $1 in
