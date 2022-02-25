@@ -8,11 +8,14 @@ fi
 
 CONFIGURE_TO_USE="./configure"
 
+# Build netint libxcoder and install it in $DIST
 (
     export DIST
     cd libxcoder
     ./build.sh
 )
+
+export PKG_CONFIG_PATH=${DIST}/lib/pkgconfig
 
 if [ "$(uname)" == "Darwin" ]; then
     if [ "$1" == "--DEBUG" ] || [ "$1" == "--debug" ]; then
@@ -25,11 +28,9 @@ if [ "$(uname)" == "Darwin" ]; then
     ${CONFIGURE_TO_USE} ${command_options}
 elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
     if [ "$1" == "--DEBUG" ] || [ "$1" == "--debug" ]; then
-        #command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags= --extra-cflags=-fPIC --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --disable-lzma --disable-stripping --enable-debug=3 --extra-cflags=-ggdb --extra-cflags=-O0 --extra-cflags=-g"
         command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags= --extra-cflags=-fPIC --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --disable-lzma --disable-stripping --enable-libxcoder --enable-ni --enable-debug=3 --extra-cflags=-ggdb --extra-cflags=-O0 --extra-cflags=-g --extra-ldflags=-L${DIST}/lib"
         CONFIGURE_TO_USE="./configure.debug"
     else
-        #command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags= --extra-cflags=-fPIC --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --disable-lzma"
         command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags= --extra-cflags=-fPIC --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --disable-lzma --enable-libxcoder --enable-ni --extra-ldflags=-L${DIST}/lib"
     fi
     FLAGS_NVIDIA=""
