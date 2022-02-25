@@ -9,6 +9,7 @@ fi
 CONFIGURE_TO_USE="./configure"
 
 (
+    export DIST
     cd libxcoder
     ./build.sh
 )

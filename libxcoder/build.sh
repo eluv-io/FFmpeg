@@ -165,7 +165,7 @@ if $signature_file; then
     extra_config_flags="${extra_config_flags} --with-signature-file"
 fi
 
-extra_config_flags="${extra_config_flags} --prefix=../dist"
+extra_config_flags="${extra_config_flags} --prefix=${DIST}"
 
 echo bash ./configure $extra_config_flags;
 bash ./configure $extra_config_flags;
