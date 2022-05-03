@@ -1,7 +1,6 @@
 DIST=$PWD/"dist"
 
-if [ ! -d $DIST ]
-then
+if [ ! -d $DIST ]; then
     mkdir $DIST
     echo "CREATED" $DIST
 fi
@@ -9,11 +8,18 @@ fi
 CONFIGURE_TO_USE="./configure"
 
 if [ "$(uname)" == "Darwin" ]; then
+
+    HOMEBREW_LOCATION="$(brew --prefix)"
+    CONFIGURE_HOMEBREW=""
+    if [ -n "${HOMEBREW_LOCATION}" -a -d "${HOMEBREW_LOCATION}" ]; then
+        CONFIGURE_HOMEBREW="--extra-ldflags=-L${HOMEBREW_LOCATION}/lib  --extra-cflags=-I${HOMEBREW_LOCATION}/include"
+    fi
+
     if [ "$1" == "--DEBUG" ] || [ "$1" == "--debug" ]; then
-        command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags=  --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --enable-videotoolbox --disable-lzma --disable-stripping --enable-debug=3 --extra-cflags=-ggdb --extra-cflags=-O0 --extra-cflags=-g"
+        command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags=  --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --enable-videotoolbox --disable-lzma --disable-stripping --enable-debug=3 --extra-cflags=-ggdb --extra-cflags=-O0 --extra-cflags=-g ${CONFIGURE_HOMEBREW}"
         CONFIGURE_TO_USE="./configure.debug"
     else
-        command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags=  --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --enable-videotoolbox --disable-lzma"
+        command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags=  --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --enable-videotoolbox --disable-lzma ${CONFIGURE_HOMEBREW}"
     fi
     echo "configuring with command_options=${command_options}"
     ${CONFIGURE_TO_USE} ${command_options}
