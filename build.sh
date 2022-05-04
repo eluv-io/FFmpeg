@@ -4,9 +4,11 @@ ffmpeg_proj_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST=${ffmpeg_proj_dir}/"dist"
 
 if [ ! -d ${DIST} ]; then
-    mkdir ${DIST}
-    echo "CREATED" ${DIST}
+    mkdir -p ${DIST}
+    echo "CREATED ${DIST}"
 fi
+
+echo "DIST=${DIST}"
 
 CONFIGURE_TO_USE="./configure"
 
@@ -84,7 +86,10 @@ elif [ "$(expr substr $(uname -s) 1 10)" == "MINGW64_NT" ]; then
     exit 1
 fi
 
-${CONFIGURE_TO_USE} ${command_options[@]}
+(
+    cd ${ffmpeg_proj_dir}
+    ${CONFIGURE_TO_USE} ${command_options[@]}
+)
 
 NPROCS=$(getconf _NPROCESSORS_ONLN)
 ELUVIO_BUILD_THREAD_COUNT=${ELUVIO_BUILD_THREAD_COUNT:-"-j${NPROCS}"}
