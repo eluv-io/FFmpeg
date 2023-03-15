@@ -567,6 +567,11 @@ typedef struct HEVCContext {
     int is_nalff;           ///< this flag is != 0 if bitstream is encapsulated
                             ///< as a format defined in 14496-15
     int apply_defdispwin;
+#if CONFIG_NI_LOGAN
+    // NETINT: option as custom HEVC SEI type setting
+    int custom_sei_type;    ///< NI custom HEVC SEI type
+    int custom_sei_location;  ///< NI custom HEVC SEI location
+#endif
 
     int nal_length_size;    ///< Number of bytes used for nal length (1, 2 or 4)
     int nuh_layer_id;

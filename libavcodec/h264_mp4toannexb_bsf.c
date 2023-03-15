@@ -62,7 +62,8 @@ static void count_or_copy(uint8_t **out, uint64_t *out_size,
     *out_size += start_code_size + in_size;
 }
 
-static int h264_extradata_to_annexb(AVBSFContext *ctx, const int padding)
+// NETINT: add argument side_data and side_size for sequence changing
+static int h264_extradata_to_annexb(AVBSFContext *ctx, const int padding, uint8_t *side_data, size_t side_size)
 {
     H264BSFContext *s = ctx->priv_data;
     GetByteContext ogb, *gb = &ogb;
@@ -72,7 +73,12 @@ static int h264_extradata_to_annexb(AVBSFContext *ctx, const int padding)
     static const uint8_t nalu_header[4] = { 0, 0, 0, 1 };
     int length_size, pps_offset = 0;
 
-    bytestream2_init(gb, ctx->par_in->extradata, ctx->par_in->extradata_size);
+    // NETINT: add processing when sidedata is available
+    if (side_data == NULL) {
+        bytestream2_init(gb, ctx->par_in->extradata, ctx->par_in->extradata_size);
+    } else {
+        bytestream2_init(gb, side_data, side_size);
+    }
 
     bytestream2_skipu(gb, 4);
 
@@ -149,7 +155,7 @@ static int h264_mp4toannexb_init(AVBSFContext *ctx)
         av_log(ctx, AV_LOG_VERBOSE,
                "The input looks like it is Annex B already\n");
     } else if (extra_size >= 7) {
-        ret = h264_extradata_to_annexb(ctx, AV_INPUT_BUFFER_PADDING_SIZE);
+        ret = h264_extradata_to_annexb(ctx, AV_INPUT_BUFFER_PADDING_SIZE, NULL, 0);
         if (ret < 0)
             return ret;
 
@@ -176,6 +182,8 @@ static int h264_mp4toannexb_filter(AVBSFContext *ctx, AVPacket *opkt)
     uint8_t *out;
     uint64_t out_size;
     int ret;
+    buffer_size_t side_size = 0; // NETINT: for sequence changing
+    uint8_t *side = NULL;
 
     ret = ff_bsf_get_packet(ctx, &in);
     if (ret < 0)
@@ -189,6 +197,16 @@ static int h264_mp4toannexb_filter(AVBSFContext *ctx, AVPacket *opkt)
     }
 
     buf_end  = in->data + in->size;
+
+    // NETINT: check new extra data which maybe contains new header
+    side = av_packet_get_side_data(in, AV_PKT_DATA_NEW_EXTRADATA, &side_size);
+    if (side) {
+        av_log(ctx, AV_LOG_TRACE, "h264_mp4toannexb_bsf found %d bytes of side data in pkt\n", side_size);
+        ret = h264_extradata_to_annexb(ctx, AV_INPUT_BUFFER_PADDING_SIZE, side, side_size);
+        if (ret < 0) {
+            av_log(ctx, AV_LOG_WARNING, "extra data parsing failed\n");
+        }
+    }
 
 #define LOG_ONCE(...) \
     if (j) \

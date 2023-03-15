@@ -39,6 +39,8 @@ HEADERS = adler32.h                                                     \
           hwcontext_d3d11va.h                                           \
           hwcontext_drm.h                                               \
           hwcontext_dxva2.h                                             \
+          hwcontext_ni_logan.h                                          \
+          hwcontext_ni_quad.h                                           \
           hwcontext_qsv.h                                               \
           hwcontext_mediacodec.h                                        \
           hwcontext_opencl.h                                            \
@@ -182,6 +184,8 @@ OBJS-$(CONFIG_LZO)                      += lzo.o
 OBJS-$(CONFIG_MEDIACODEC)               += hwcontext_mediacodec.o
 OBJS-$(CONFIG_OPENCL)                   += hwcontext_opencl.o
 OBJS-$(CONFIG_QSV)                      += hwcontext_qsv.o
+OBJS-$(CONFIG_NI_LOGAN)                 += hwcontext_ni_logan.o
+OBJS-$(CONFIG_NI_QUADRA)                += hwcontext_ni_quad.o
 OBJS-$(CONFIG_VAAPI)                    += hwcontext_vaapi.o
 OBJS-$(CONFIG_VIDEOTOOLBOX)             += hwcontext_videotoolbox.o
 OBJS-$(CONFIG_VDPAU)                    += hwcontext_vdpau.o

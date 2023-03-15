@@ -4562,7 +4562,12 @@ FF_ENABLE_DEPRECATION_WARNINGS
 #endif
 
         /* default pts setting is MPEG-like */
-        avpriv_set_pts_info(st, 33, 1, 90000);
+        // NETINT: Change PTS from 33bit integer to 62bit integer to delay PTS
+        // discontinuity at rollover except for mpeg and mpegts format
+        if (!strcmp(s->iformat->name, "mpeg") || !strcmp(s->iformat->name, "mpegts"))
+            avpriv_set_pts_info(st, 32, 1, 90000);
+        else
+            avpriv_set_pts_info(st, 62, 1, 90000);
         /* we set the current DTS to 0 so that formats without any timestamps
          * but durations get some timestamps, formats with some unknown
          * timestamps have their first few packets buffered and the

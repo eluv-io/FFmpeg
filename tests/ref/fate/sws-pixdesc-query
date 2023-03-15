@@ -400,6 +400,7 @@ isRGB:
   bgr8
   bgra64be
   bgra64le
+  bgrp
   gbrap
   gbrap10be
   gbrap10le
@@ -546,6 +547,7 @@ AnyRGB:
   bgr8
   bgra64be
   bgra64le
+  bgrp
   gbrap
   gbrap10be
   gbrap10le
@@ -709,6 +711,7 @@ Packed:
   yvyu422
 
 Planar:
+  bgrp
   gbrap
   gbrap10be
   gbrap10le
@@ -866,6 +869,7 @@ PackedRGB:
   x2rgb10le
 
 PlanarRGB:
+  bgrp
   gbrap
   gbrap10be
   gbrap10le

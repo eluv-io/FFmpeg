@@ -423,7 +423,7 @@ static av_cold int mpeg_mux_init(AVFormatContext *ctx)
 
             /* This value HAS to be used for VCD (see VCD standard, p. IV-7).
              * Right now it is also used for everything else. */
-            stream->max_buffer_size = 4 * 1024;
+            stream->max_buffer_size = 4 * 1024 * 2; // NETINT: Increase MPG buffers to avoid overflow at higher bitrates
             s->audio_bound++;
             break;
         case AVMEDIA_TYPE_VIDEO:
@@ -434,14 +434,14 @@ static av_cold int mpeg_mux_init(AVFormatContext *ctx)
 
             props = (AVCPBProperties*)av_stream_get_side_data(st, AV_PKT_DATA_CPB_PROPERTIES, NULL);
             if (props && props->buffer_size)
-                stream->max_buffer_size = 6 * 1024 + props->buffer_size / 8;
+                stream->max_buffer_size = (6 * 1024 + props->buffer_size / 8) * 2; // NETINT: Increase MPG buffers to avoid overflow at higher bitrates
             else {
                 av_log(ctx, AV_LOG_WARNING,
                        "VBV buffer size not set, using default size of 230KB\n"
                        "If you want the mpeg file to be compliant to some specification\n"
                        "Like DVD, VCD or others, make sure you set the correct buffer size\n");
                 // FIXME: this is probably too small as default
-                stream->max_buffer_size = 230 * 1024;
+                stream->max_buffer_size = 230 * 1024 * 2; // NETINT: Increase MPG buffers to avoid overflow at higher bitrates
             }
             if (stream->max_buffer_size > 1024 * 8191) {
                 av_log(ctx, AV_LOG_WARNING, "buffer size %d, too large\n", stream->max_buffer_size);

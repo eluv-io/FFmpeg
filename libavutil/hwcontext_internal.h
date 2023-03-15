@@ -170,6 +170,8 @@ extern const HWContextType ff_hwcontext_type_dxva2;
 extern const HWContextType ff_hwcontext_type_opencl;
 extern const HWContextType ff_hwcontext_type_qsv;
 extern const HWContextType ff_hwcontext_type_vaapi;
+extern const HWContextType ff_hwcontext_type_ni_logan;
+extern const HWContextType ff_hwcontext_type_ni_quadra;
 extern const HWContextType ff_hwcontext_type_vdpau;
 extern const HWContextType ff_hwcontext_type_videotoolbox;
 extern const HWContextType ff_hwcontext_type_mediacodec;

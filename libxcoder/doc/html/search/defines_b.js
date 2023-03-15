@@ -1,0 +1,22 @@
+var searchData=
+[
+  ['macro_5fto_5fstr_6578',['MACRO_TO_STR',['../ni__defs_8h.html#afdf7e767a9b0bf57dc518b6af48e7efb',1,'ni_defs.h']]],
+  ['macros_5fto_5fver_5fstr_6579',['MACROS_TO_VER_STR',['../ni__defs_8h.html#a00441917639c7784dd41911bf4a093a8',1,'ni_defs.h']]],
+  ['maj_6580',['MAJ',['../ni__util_8c.html#ae2f6c7a0b4fdb15387259356b16854c9',1,'ni_util.c']]],
+  ['mastering_5fdisp_5fchroma_5fden_6581',['MASTERING_DISP_CHROMA_DEN',['../ni__av__codec_8h.html#aad0a698c3dff4579b08084d4cb6522ca',1,'ni_av_codec.h']]],
+  ['mastering_5fdisp_5fluma_5fden_6582',['MASTERING_DISP_LUMA_DEN',['../ni__av__codec_8h.html#a8d4f232e92ed1cce6fac1b8f3f1ff72c',1,'ni_av_codec.h']]],
+  ['max_5fav1_5fencoder_5fgop_5fnum_6583',['MAX_AV1_ENCODER_GOP_NUM',['../ni__defs_8h.html#a4358836d5221fe557871fea634907dcb',1,'ni_defs.h']]],
+  ['max_5fchar_5fin_5fdevice_5fname_6584',['MAX_CHAR_IN_DEVICE_NAME',['../ni__device__api_8h.html#ab1cd6a500f56ca61a2fe0ad5cbb55ecf',1,'ni_device_api.h']]],
+  ['max_5fcpb_5fcount_6585',['MAX_CPB_COUNT',['../ni__av__codec_8c.html#aece5a06351cd6ab1c9758f7367d19cbd',1,'ni_av_codec.c']]],
+  ['max_5fduration_6586',['MAX_DURATION',['../ni__av__codec_8c.html#a6fe20280969d53d30eaefea36dfa9c19',1,'ni_av_codec.c']]],
+  ['max_5finput_5ffiles_6587',['MAX_INPUT_FILES',['../ni__device__test_8h.html#a7ffa49171ebf2b6ffe0a77924efa955b',1,'ni_device_test.h']]],
+  ['max_5flock_5fretry_6588',['MAX_LOCK_RETRY',['../ni__rsrc__priv_8h.html#aa0ae97f786044a5de506c45c52608a74',1,'ni_rsrc_priv.h']]],
+  ['max_5flog2_5fmax_5fframe_5fnum_6589',['MAX_LOG2_MAX_FRAME_NUM',['../ni__device__test_8c.html#adca41fa07df17495a00bab7b0c423c25',1,'ni_device_test.c']]],
+  ['max_5fnum_5fframepool_5fhwavframe_6590',['MAX_NUM_FRAMEPOOL_HWAVFRAME',['../ni__device__api_8h.html#a8056fc00718b7dc62e62f7a901fa2cdf',1,'ni_device_api.h']]],
+  ['max_5foutput_5ffiles_6591',['MAX_OUTPUT_FILES',['../ni__device__test_8h.html#a6fa9352e92e20f0c2cc262c10b3b7d67',1,'ni_device_test.h']]],
+  ['max_5fvps_5fmax_5fsub_5flayers_6592',['MAX_VPS_MAX_SUB_LAYERS',['../ni__av__codec_8c.html#a4ebec8992bf00922b99d75f0706185eb',1,'ni_av_codec.c']]],
+  ['max_5fyuv_5fframe_5fsize_6593',['MAX_YUV_FRAME_SIZE',['../ni__device__test_8c.html#a074fc1001ee8c1c46c913b5592db8330',1,'MAX_YUV_FRAME_SIZE():&#160;ni_device_test.c'],['../ni__p2p__test_8c.html#a074fc1001ee8c1c46c913b5592db8330',1,'MAX_YUV_FRAME_SIZE():&#160;ni_p2p_test.c']]],
+  ['mbs_6594',['MBs',['../ni__nvme_8h.html#ab2725c1d67c55e930bd45615e8035999',1,'ni_nvme.h']]],
+  ['mbs_5fto_5f4k_6595',['MBs_to_4k',['../ni__nvme_8h.html#aa30c085a0e2b9081433417de53f14c99',1,'ni_nvme.h']]],
+  ['min_5flog2_5fmax_5fframe_5fnum_6596',['MIN_LOG2_MAX_FRAME_NUM',['../ni__device__test_8c.html#a320598d3c9f234a214b8a8c400fc4f31',1,'ni_device_test.c']]]
+];

@@ -1,0 +1,19 @@
+var searchData=
+[
+  ['ni_5falloc_5frule_5ft_5904',['ni_alloc_rule_t',['../ni__rsrc__api_8h.html#aa7880eaad1b291fe86040967382c8895',1,'ni_rsrc_api.h']]],
+  ['ni_5fbitstream_5fformat_5ft_5905',['ni_bitstream_format_t',['../ni__device__api__priv_8h.html#af9147f32147067eff403ff696783efd4',1,'ni_device_api_priv.h']]],
+  ['ni_5fcodec_5fhw_5factions_5906',['ni_codec_hw_actions',['../ni__device__api_8h.html#ac77a9953cc9ca317a4e4ea16bd124584',1,'ni_device_api.h']]],
+  ['ni_5fcodec_5ft_5907',['ni_codec_t',['../ni__rsrc__api_8h.html#a9945b3a5098e949d3e596e6f778e01bc',1,'ni_rsrc_api.h']]],
+  ['ni_5fdecoder_5fcrop_5fmode_5908',['ni_decoder_crop_mode',['../ni__device__api__priv_8h.html#ac42c7ba0aaea0a4fba0a8a4184c5e449',1,'ni_device_api_priv.h']]],
+  ['ni_5fdevice_5ftype_5ft_5909',['ni_device_type_t',['../ni__defs_8h.html#a758f24acb02b236820c7390eed53d1cc',1,'ni_defs.h']]],
+  ['ni_5fh265_5fsei_5fuser_5fdata_5ftype_5ft_5910',['ni_h265_sei_user_data_type_t',['../ni__device__api_8h.html#a6f3f122e572183c2cd88b6109a6d0617',1,'ni_device_api.h']]],
+  ['ni_5finstance_5fbuf_5finfo_5frw_5ftype_5ft_5911',['ni_instance_buf_info_rw_type_t',['../ni__device__api__priv_8h.html#ad6b3dca888f3531ef6bad605adbff288',1,'ni_device_api_priv.h']]],
+  ['ni_5flog_5flevel_5ft_5912',['ni_log_level_t',['../ni__log_8h.html#a70ef5e25347290f762b2a7eb21970dbe',1,'ni_log.h']]],
+  ['ni_5fpic_5ftype_5ft_5913',['ni_pic_type_t',['../ni__device__api_8h.html#ad5e9ed01bfa09df43fed26ac245e9e7b',1,'ni_device_api.h']]],
+  ['ni_5fpix_5ffmt_5ft_5914',['ni_pix_fmt_t',['../ni__device__api_8h.html#aca89da901e00925e52e7887a393a3d66',1,'ni_device_api.h']]],
+  ['ni_5fretcode_5ft_5915',['ni_retcode_t',['../ni__defs_8h.html#ad17d6e18a9823cd16642c7f4aebdd247',1,'ni_defs.h']]],
+  ['ni_5fsession_5fconfig_5frw_5ftype_5ft_5916',['ni_session_config_rw_type_t',['../ni__device__api__priv_8h.html#a2f3c64de569c24fc528bc46b6ef0adf2',1,'ni_device_api_priv.h']]],
+  ['ni_5fset_5fparam_5foption_5ft_5917',['ni_set_param_option_t',['../ni__device__api__priv_8h.html#a64ab22dcff4162389c508d9c3358d89e',1,'ni_device_api_priv.h']]],
+  ['ni_5fsw_5finstance_5fstatus_5ft_5918',['ni_sw_instance_status_t',['../ni__rsrc__api_8h.html#a64a7b6cabb90ef404ab5425542fefe20',1,'ni_rsrc_api.h']]],
+  ['ni_5fxcoder_5fstate_5ft_5919',['ni_xcoder_state_t',['../ni__device__api_8h.html#a667e917631254f817d750640dea3dc0a',1,'ni_device_api.h']]]
+];

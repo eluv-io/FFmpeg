@@ -190,6 +190,15 @@
  * @{
  */
 
+ /**
+ * Allocate a memory block with alignment suitable 4k aligned access
+ *
+ * @param size Size in bytes for the memory block to be allocated
+ * @return Pointer to the allocated block, or `NULL` if the block cannot
+ *         be allocated
+ */
+void *av_malloc_quadra(size_t size) av_malloc_attrib av_alloc_size(1);
+
 /**
  * Allocate a memory block with alignment suitable for all memory accesses
  * (including vectors if available on the CPU).

@@ -11,6 +11,8 @@ ALLAVPROGS_G = $(AVBASENAMES:%=%$(PROGSSUF)_g$(EXESUF))
 
 OBJS-ffmpeg                        += fftools/ffmpeg_opt.o fftools/ffmpeg_filter.o fftools/ffmpeg_hw.o
 OBJS-ffmpeg-$(CONFIG_LIBMFX)       += fftools/ffmpeg_qsv.o
+OBJS-ffmpeg-$(CONFIG_NI_QUADRA)    += fftools/ffmpeg_ni_quad.o
+OBJS-ffmpeg-$(CONFIG_NI_LOGAN)     += fftools/ffmpeg_ni_logan.o
 ifndef CONFIG_VIDEOTOOLBOX
 OBJS-ffmpeg-$(CONFIG_VDA)          += fftools/ffmpeg_videotoolbox.o
 endif

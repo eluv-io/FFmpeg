@@ -76,6 +76,7 @@ typedef struct MpegTSWrite {
     const AVClass *av_class;
     MpegTSSection pat; /* MPEG-2 PAT table */
     MpegTSSection sdt; /* MPEG-2 SDT table context */
+    MpegTSSection scte35; /* MPEG-2 scte35 signaling */ // NETINT: add scte35 type to mpegts muxer as PSI
     MpegTSService **services;
     AVPacket *pkt;
     int64_t sdt_period; /* SDT period in PCR time base */
@@ -114,6 +115,12 @@ typedef struct MpegTSWrite {
     int64_t sdt_period_us;
     int64_t last_pat_ts;
     int64_t last_sdt_ts;
+
+    // NETINT: add scte35 type to mpegts muxer as PSI
+    int64_t last_scte35_ts;
+    int64_t scte35_period_us;
+    int scte35_packet_count;
+    int64_t scte35_period;
 
     int omit_video_pes_length;
 } MpegTSWrite;
@@ -211,6 +218,24 @@ static int mpegts_write_section1(MpegTSSection *s, int tid, int id,
     *q++ = 0xc1 | (version << 1); /* current_next_indicator = 1 */
     *q++ = sec_num;
     *q++ = last_sec_num;
+    memcpy(q, buf, len);
+
+    mpegts_write_section(s, section, tot_len);
+    return 0;
+}
+
+// NETINT: add scte35 type to mpegts muxer as PSI
+static int mpegts_write_section_scte35(MpegTSSection *s, uint8_t *buf, int len)
+{
+    uint8_t section[1024], *q;
+    unsigned int tot_len;
+
+    tot_len = len;
+    /* check if not too big */
+    if (tot_len > 1024)
+        return AVERROR_INVALIDDATA;
+
+    q    = section;
     memcpy(q, buf, len);
 
     mpegts_write_section(s, section, tot_len);
@@ -355,6 +380,10 @@ static int get_dvb_stream_type(AVFormatContext *s, AVStream *st)
     case AV_CODEC_ID_TIMED_ID3:
         stream_type = STREAM_TYPE_METADATA;
         break;
+	// NETINT: add scte35 type to mpegts muxer as PSI
+    case AV_CODEC_ID_SCTE_35:
+        stream_type = STREAM_TYPE_SCTE_35;
+        break;
     case AV_CODEC_ID_DVB_SUBTITLE:
     case AV_CODEC_ID_DVB_TELETEXT:
         stream_type = STREAM_TYPE_PRIVATE_DATA;
@@ -442,6 +471,20 @@ static int mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
     q += 2; /* patched after */
 
     /* put program info here */
+	// NETINT: add scte35 type to mpegts muxer as PSI
+    for (i = 0; i < s->nb_streams; i++) {
+        if(s->streams[i]->codecpar->codec_id==AV_CODEC_ID_SCTE_35){
+            *q++ = 0x05; // ANSI SCTE35 descriptor tag
+            *q++ = 0x04; // ANSI SCTE35 descriptor length (4 for CUEI)
+
+            *q++ = 0x43; // 'C'
+            *q++ = 0x55; // 'U'
+            *q++ = 0x45; // 'E'
+            *q++ = 0x49; // 'I'
+            break;
+        }
+    }
+
     if (ts->m2ts_mode) {
         put_registration_descriptor(&q, MKTAG('H', 'D', 'M', 'V'));
         *q++ = 0x88;        // descriptor_tag - hdmv_copy_control_descriptor
@@ -797,6 +840,38 @@ static void mpegts_write_sdt(AVFormatContext *s)
                           data, q - data);
 }
 
+// NETINT: add scte35 type to mpegts muxer as PSI
+static void mpegts_write_scte35(AVFormatContext *s, int64_t pts, const uint8_t *payload, int payload_size)
+{
+    MpegTSWrite *ts = s->priv_data;
+    uint8_t payloadSynced[SECTION_LENGTH];
+    uint8_t data[SECTION_LENGTH], *q;
+    if(payload_size > SECTION_LENGTH){
+      av_log(s, AV_LOG_ERROR, "SCTE35 Payload exceeds max section length \n");
+      return;
+    }
+    q = data;
+    memcpy(payloadSynced, payload, payload_size);
+
+    // set ffmpeg pts
+    if (payloadSynced[13] == 6){ // scte 35 time signal type = 6
+        payloadSynced[15] = (pts & 0xFF000000) >> 24;
+        payloadSynced[16] = (pts & 0x00FF0000) >> 16;
+        payloadSynced[17] = (pts & 0x0000FF00) >> 8;
+        payloadSynced[18] = (pts & 0x000000FF);
+    }else if (payloadSynced[13] == 5){ // scte 35 splice insert type = 5
+        payloadSynced[21] = (pts & 0xFF000000) >> 24;
+        payloadSynced[22] = (pts & 0x00FF0000) >> 16;
+        payloadSynced[23] = (pts & 0x0000FF00) >> 8;
+        payloadSynced[24] = (pts & 0x000000FF);
+    }else{
+        av_log(s, AV_LOG_ERROR, "SCTE35 signal type not yet supported\n");
+    }
+    memcpy(q, payloadSynced, payload_size);
+    q+=payload_size;
+    mpegts_write_section_scte35(&ts->scte35, data, q - data);
+}
+
 /* This stores a string in buf with the correct encoding and also sets the
  * first byte as the length. !str is accepted for an empty string.
  * If the string is already encoded, invalid UTF-8 or has no multibyte sequence
@@ -1027,6 +1102,12 @@ static int mpegts_init(AVFormatContext *s)
     if (!ts->pkt)
         return AVERROR(ENOMEM);
 
+    // NETINT: add scte35 type to mpegts muxer as PSI
+    ts->scte35.cc           = 15;
+    ts->scte35.discontinuity= ts->flags & MPEGTS_FLAG_DISCONT;
+    ts->scte35.write_packet = section_write_packet;
+    ts->scte35.opaque       = s;
+
     /* assign pids to each stream */
     for (i = 0; i < s->nb_streams; i++) {
         AVStream *st = s->streams[i];
@@ -1144,6 +1225,7 @@ static int mpegts_init(AVFormatContext *s)
 
     ts->last_pat_ts = AV_NOPTS_VALUE;
     ts->last_sdt_ts = AV_NOPTS_VALUE;
+    ts->last_scte35_ts = AV_NOPTS_VALUE; // NETINT: add scte35 type to mpegts muxer as PSI
     ts->pat_period = av_rescale(ts->pat_period_us, PCR_TIME_BASE, AV_TIME_BASE);
     ts->sdt_period = av_rescale(ts->sdt_period_us, PCR_TIME_BASE, AV_TIME_BASE);
 
@@ -1327,6 +1409,13 @@ static void mpegts_write_pes(AVFormatContext *s, AVStream *st,
             pcr = (dts - delay) * 300;
 
         retransmit_si_info(s, force_pat, force_sdt, pcr);
+        // NETINT: add scte35 type to mpegts muxer as PSI
+        if(st->codecpar->codec_id == AV_CODEC_ID_SCTE_35){
+          ts->scte35.pid = ts_st->pid;
+          mpegts_write_scte35 (s, pts, payload, payload_size);
+          payload_size = 0;
+          continue;
+        }
         force_pat = 0;
         force_sdt = 0;
 
@@ -1692,12 +1781,13 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
     if (side_data)
         stream_id = side_data[0];
 
-    if (ts->copyts < 1) {
-        if (!ts->first_dts_checked && dts != AV_NOPTS_VALUE) {
-            ts->first_pcr += dts * 300;
-            ts->first_dts_checked = 1;
-        }
+    // NETINT: Fix for use of '-muxrate' with '-copyts' and '-mpegts_copyts'
+    if (!ts->first_dts_checked && dts != AV_NOPTS_VALUE) {
+        ts->first_pcr += dts * 300;
+        ts->first_dts_checked = 1;
+    }
 
+    if (ts->copyts < 1) {
         if (pts != AV_NOPTS_VALUE)
             pts += delay;
         if (dts != AV_NOPTS_VALUE)

@@ -61,6 +61,8 @@ enum HWAccelID {
     HWACCEL_GENERIC,
     HWACCEL_VIDEOTOOLBOX,
     HWACCEL_QSV,
+    HWACCEL_NI_LOGAN,
+    HWACCEL_NI_QUADRA
 };
 
 typedef struct HWAccel {
@@ -469,6 +471,11 @@ typedef struct OutputStream {
     AVRational mux_timebase;
     AVRational enc_timebase;
 
+    // NETINT: add option to display windowed average FPS
+    int64_t ni_prev_fps_measurement_time;
+    int ni_prev_frame_count;
+    float ni_prev_fps;
+
     AVBSFContext            *bsf_ctx;
 
     AVCodecContext *enc_ctx;
@@ -605,6 +612,8 @@ extern float audio_drift_threshold;
 extern float dts_delta_threshold;
 extern float dts_error_threshold;
 
+extern float ni_interval_fps; // NETINT: windowed average FPS display window size
+
 extern int audio_volume;
 extern int audio_sync_method;
 extern int video_sync_method;
@@ -668,6 +677,14 @@ int ffmpeg_parse_options(int argc, char **argv);
 
 int videotoolbox_init(AVCodecContext *s);
 int qsv_init(AVCodecContext *s);
+
+#if CONFIG_NI_QUADRA
+int ni_quad_init(AVCodecContext *s);
+#endif
+
+#if CONFIG_NI_LOGAN
+int ni_logan_init(AVCodecContext *s);
+#endif
 
 HWDevice *hw_device_get_by_name(const char *name);
 int hw_device_init_from_string(const char *arg, HWDevice **dev);

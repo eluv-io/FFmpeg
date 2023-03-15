@@ -1,0 +1,26 @@
+var struct__ni__device__info =
+[
+    [ "active_num_inst", "struct__ni__device__info.html#abc1e010958d29af2aced42e5163fb167", null ],
+    [ "blk_name", "struct__ni__device__info.html#a6530e9a6673f9987f61edc62afb5d486", null ],
+    [ "dev_cap", "struct__ni__device__info.html#ae4293c895399749177dbb46f1d75bd72", null ],
+    [ "dev_name", "struct__ni__device__info.html#a5bddd902bffa71cca77922ac8e58f9dd", null ],
+    [ "device_type", "struct__ni__device__info.html#a7c83c99b4f3f7039be4f7e92f610c179", null ],
+    [ "fw_branch_name", "struct__ni__device__info.html#a91572fb81a332e7d5c82dea0062b60e0", null ],
+    [ "fw_build_id", "struct__ni__device__info.html#a04569ea2f891086c73cd069e6d4ea4d2", null ],
+    [ "fw_build_time", "struct__ni__device__info.html#abce091f9ce105b8be242a2c6c92853ed", null ],
+    [ "fw_commit_hash", "struct__ni__device__info.html#a6332e168616712788c87cda9defcafd0", null ],
+    [ "fw_commit_time", "struct__ni__device__info.html#a415841915f1606c570e5ede8f51cb661", null ],
+    [ "fw_rev", "struct__ni__device__info.html#a5daa56874084593c7531f70708ea304d", null ],
+    [ "fw_ver_compat_warning", "struct__ni__device__info.html#a789bb65014e5a3163a0541d05dbccd5a", null ],
+    [ "hw_id", "struct__ni__device__info.html#a0a8a4b1c98c0ad55e5854a002f18caba", null ],
+    [ "load", "struct__ni__device__info.html#aa1843f81d109cc0b7f234d61b5662119", null ],
+    [ "lock", "struct__ni__device__info.html#ad70c9254e2a51831bfd8b769d977a6a9", null ],
+    [ "max_fps_4k", "struct__ni__device__info.html#a692a9b1a12d5579305ca7836a8aaf1af", null ],
+    [ "max_instance_cnt", "struct__ni__device__info.html#a798ec1d68cf857ec8b87ce67aec7e068", null ],
+    [ "model_load", "struct__ni__device__info.html#a538a6b74864f5bde38bf1ed9bca85577", null ],
+    [ "model_number", "struct__ni__device__info.html#a949a451104c5ac6126f6d9bdc5e2a948", null ],
+    [ "module_id", "struct__ni__device__info.html#a0bc5f91a15f045d84b9cc9c2cfe03ca0", null ],
+    [ "serial_number", "struct__ni__device__info.html#a5a7ffa3c5a547506544cfafd1b5039e0", null ],
+    [ "sw_instance", "struct__ni__device__info.html#a6e9fc264ad9b6a895851357d2f9cdf60", null ],
+    [ "xcode_load_pixel", "struct__ni__device__info.html#af7b563c1eb04ef61577e64a7319c1a77", null ]
+];

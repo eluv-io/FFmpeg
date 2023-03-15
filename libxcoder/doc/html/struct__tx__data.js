@@ -1,0 +1,25 @@
+var struct__tx__data =
+[
+    [ "arg_height", "struct__tx__data.html#ae91e67d3ca1ac1094294c59a78135739", null ],
+    [ "arg_width", "struct__tx__data.html#aecc7f5c68a0c2772c369ca1e574a5af0", null ],
+    [ "DataSizeLimit", "struct__tx__data.html#a4aa53b9be31c92ae0c808987161f96d3", null ],
+    [ "device_handle", "struct__tx__data.html#a9f7ec948aaf8e58f5662ee0a5d9072c2", null ],
+    [ "fileName", "struct__tx__data.html#aaedb35f2a0ed600514ad0c02d2db5f48", null ],
+    [ "mode", "struct__tx__data.html#a1ea5d0cb93f22f7d0fdf804bd68c3326", null ],
+    [ "p_crop_ctx", "struct__tx__data.html#ac4a38fa5665c8e939e8a9772e34a2949", null ],
+    [ "p_crop_rsrc_ctx", "struct__tx__data.html#aa1d483a97940aa1c2a48ee2232cc923d", null ],
+    [ "p_dec_ctx", "struct__tx__data.html#aa876a317f0d32be2ff820fffcb6994a1", null ],
+    [ "p_dec_rsrc_ctx", "struct__tx__data.html#aa1910cac8a0d830cdefe42be0f679340", null ],
+    [ "p_enc_ctx", "struct__tx__data.html#a0dcef0baa36ca3470b4c561444d1b68c", null ],
+    [ "p_enc_rsrc_ctx", "struct__tx__data.html#a09d92e4609148acb4d096280e071c557", null ],
+    [ "p_fmt_ctx", "struct__tx__data.html#aef24d1d236262f8d94292dcb915fe492", null ],
+    [ "p_fmt_rsrc_ctx", "struct__tx__data.html#ab6024183cf63c21185fba6bbba7644cb", null ],
+    [ "p_ovly_ctx", "struct__tx__data.html#ab1f354049b322702198dadbe772dd531", null ],
+    [ "p_ovly_rsrc_ctx", "struct__tx__data.html#ad23dd7704105e2199c269faf50e0ee82", null ],
+    [ "p_pad_ctx", "struct__tx__data.html#a974e7c276153b078bbcf758252be804c", null ],
+    [ "p_pad_rsrc_ctx", "struct__tx__data.html#ae2e4e497d817ccdcf98166a716fd4a72", null ],
+    [ "p_sca_ctx", "struct__tx__data.html#a5f2062c4a68cff85672b0d82d08b8fb9", null ],
+    [ "p_sca_rsrc_ctx", "struct__tx__data.html#a221ae840d5821f4394d8d1a2317f86fc", null ],
+    [ "p_upl_ctx", "struct__tx__data.html#a11c89761ddce4e6807a4633883893de6", null ],
+    [ "p_upl_rsrc_ctx", "struct__tx__data.html#a2f1264058b319dd9fd6427d5f9d2ed52", null ]
+];

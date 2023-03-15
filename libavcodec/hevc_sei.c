@@ -28,6 +28,10 @@
 #include "hevc_ps.h"
 #include "hevc_sei.h"
 
+#if CONFIG_NI_LOGAN
+#include <ni_device_api_logan.h>
+#endif
+
 static int decode_nal_sei_decoded_picture_hash(HEVCSEIPictureHash *s, GetBitContext *gb)
 {
     int cIdx, i;
@@ -349,6 +353,32 @@ static int decode_nal_sei_alternative_transfer(HEVCSEIAlternativeTransfer *s, Ge
     return 0;
 }
 
+#if CONFIG_NI_LOGAN
+static int decode_nal_sei_ni_custom(HEVCSEINICustom *s, GetBitContext *gb, int size, int location)
+{
+    int i, index;
+    ni_logan_all_custom_sei_t *p_all_custom_sei;
+    ni_logan_custom_sei_t *p_custom_sei;
+
+    s->buf_ref = av_buffer_allocz(sizeof(ni_logan_all_custom_sei_t));
+    if (!s->buf_ref)
+        return AVERROR(ENOMEM);
+
+    p_all_custom_sei = (ni_logan_all_custom_sei_t *) s->buf_ref->data;
+    index = p_all_custom_sei->custom_sei_cnt;
+    p_custom_sei = &p_all_custom_sei->ni_custom_sei[index];
+
+    for (i = 0; i < size; i++)
+        p_custom_sei->custom_sei_data[i] = get_bits(gb, 8);
+
+    p_custom_sei->custom_sei_loc = location;
+    p_custom_sei->custom_sei_size = size;
+    p_custom_sei->custom_sei_type = s->type;
+    p_all_custom_sei->custom_sei_cnt++;
+    return 0;
+}
+#endif
+
 static int decode_nal_sei_timecode(HEVCSEITimeCode *s, GetBitContext *gb)
 {
     s->num_clock_ts = get_bits(gb, 2);
@@ -465,6 +495,13 @@ static int decode_nal_sei_message(GetBitContext *gb, void *logctx, HEVCSEI *s,
     }
     if (get_bits_left(gb) < 8LL*payload_size)
         return AVERROR_INVALIDDATA;
+
+#if CONFIG_NI_LOGAN
+    if (payload_type == s->ni_custom.type) {
+        return decode_nal_sei_ni_custom(&s->ni_custom, gb, payload_size, s->ni_custom.location);
+    }
+#endif
+
     if (nal_unit_type == HEVC_NAL_SEI_PREFIX) {
         return decode_nal_sei_prefix(gb, logctx, s, ps, payload_type, payload_size);
     } else { /* nal_unit_type == NAL_SEI_SUFFIX */
@@ -493,6 +530,9 @@ int ff_hevc_decode_nal_sei(GetBitContext *gb, void *logctx, HEVCSEI *s,
 void ff_hevc_reset_sei(HEVCSEI *s)
 {
     av_buffer_unref(&s->a53_caption.buf_ref);
+#if CONFIG_NI_LOGAN
+    av_buffer_unref(&s->ni_custom.buf_ref);
+#endif
 
     for (int i = 0; i < s->unregistered.nb_buf_ref; i++)
         av_buffer_unref(&s->unregistered.buf_ref[i]);

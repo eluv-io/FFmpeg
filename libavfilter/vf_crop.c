@@ -96,7 +96,11 @@ static int query_formats(AVFilterContext *ctx)
     AVFilterFormats *formats = NULL;
     int ret;
 
-    ret = ff_formats_pixdesc_filter(&formats, 0, AV_PIX_FMT_FLAG_BITSTREAM | FF_PIX_FMT_FLAG_SW_FLAT_SUB);
+    // NETINT: reject hardware frames as input to software crop filter
+    ret = ff_formats_pixdesc_filter(&formats, 0,
+                                    AV_PIX_FMT_FLAG_BITSTREAM |
+                                    FF_PIX_FMT_FLAG_SW_FLAT_SUB |
+                                    AV_PIX_FMT_FLAG_HWACCEL);
     if (ret < 0)
         return ret;
     return ff_set_common_formats(ctx, formats);

@@ -220,6 +220,23 @@ enum AVPixelFormat {
      *  mfxFrameSurface1 structure.
      */
     AV_PIX_FMT_QSV,
+
+    /**
+     * HW acceleration through NI, data[3] contains a pointer to the
+     * ni_logan_hwframe_surface_t structure, for Netint Logan.
+     */
+    AV_PIX_FMT_NI_LOGAN,
+
+    /**
+     * HW acceleration through NI, data[3] contains a pointer to the
+     * niFrameSurface1_t structure, for Netint Quadra.
+     */
+    AV_PIX_FMT_NI_QUAD,
+    AV_PIX_FMT_NI_QUAD_8_TILE_4X4, /// 8-bit tiled 4x4 compression format within
+                                   /// QUADRA
+    AV_PIX_FMT_NI_QUAD_10_TILE_4X4, /// 10-bit tiled 4x4 compression format
+                                    /// within QUADRA
+
     /**
      * HW acceleration though MMAL, data[3] contains a pointer to the
      * MMAL_BUFFER_HEADER_T structure.
@@ -357,6 +374,9 @@ enum AVPixelFormat {
 
     AV_PIX_FMT_Y210BE,    ///< packed YUV 4:2:2 like YUYV422, 20bpp, data in the high bits, big-endian
     AV_PIX_FMT_Y210LE,    ///< packed YUV 4:2:2 like YUYV422, 20bpp, data in the high bits, little-endian
+
+    // NETINT: Add AV_PIX_FMT_BGRP for avfilter with BG and ROI
+    AV_PIX_FMT_BGRP, ///< planar BGR 4:4:4 24bpp
 
     AV_PIX_FMT_X2RGB10LE, ///< packed RGB 10:10:10, 30bpp, (msb)2X 10R 10G 10B(lsb), little-endian, X=unused/undefined
     AV_PIX_FMT_X2RGB10BE, ///< packed RGB 10:10:10, 30bpp, (msb)2X 10R 10G 10B(lsb), big-endian, X=unused/undefined

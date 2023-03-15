@@ -289,6 +289,10 @@ External library support:
   --enable-libwebp         enable WebP encoding via libwebp [no]
   --enable-libx264         enable H.264 encoding via x264 [no]
   --enable-libx265         enable HEVC encoding via x265 [no]
+  --enable-libxcoder       enable NetInt Quadra Xcoder [no]
+  --enable-ni_quadra       enable NetInt Quadra HWaccel [no]
+  --enable-libxcoder_logan enable NetInt Logan Xcoder [no]
+  --enable-ni_logan        enable NetInt Logan HWaccel [no]
   --enable-libxavs         enable AVS encoding via xavs [no]
   --enable-libxavs2        enable AVS2 encoding via xavs2 [no]
   --enable-libxcb          enable X11 grabbing using XCB [autodetect]
@@ -1819,6 +1823,8 @@ EXTERNAL_LIBRARY_LIST="
     libvorbis
     libvpx
     libwebp
+    libxcoder
+    libxcoder_logan
     libxml2
     libzimg
     libzmq
@@ -1866,6 +1872,8 @@ HWACCEL_LIBRARY_LIST="
     $HWACCEL_LIBRARY_NONFREE_LIST
     libmfx
     mmal
+    ni_quadra
+    ni_logan
     omx
     opencl
     vulkan
@@ -3292,6 +3300,18 @@ libx264_encoder_select="atsc_a53"
 libx264rgb_encoder_deps="libx264 x264_csp_bgr"
 libx264rgb_encoder_select="libx264_encoder"
 libx265_encoder_deps="libx265"
+h264_ni_quadra_decoder_deps="libxcoder"
+h265_ni_quadra_decoder_deps="libxcoder"
+jpeg_ni_quadra_decoder_deps="libxcoder"
+vp9_ni_quadra_decoder_deps="libxcoder"
+av1_ni_quadra_encoder_deps="libxcoder"
+h264_ni_quadra_encoder_deps="libxcoder"
+h265_ni_quadra_encoder_deps="libxcoder"
+jpeg_ni_quadra_encoder_deps="libxcoder"
+h264_ni_logan_decoder_deps="libxcoder_logan"
+h265_ni_logan_decoder_deps="libxcoder_logan"
+h264_ni_logan_encoder_deps="libxcoder_logan"
+h265_ni_logan_encoder_deps="libxcoder_logan"
 libxavs_encoder_deps="libxavs"
 libxavs2_encoder_deps="libxavs2"
 libxvid_encoder_deps="libxvid"
@@ -3620,6 +3640,7 @@ scale2ref_filter_deps="swscale"
 scale_filter_deps="swscale"
 scale_qsv_filter_deps="libmfx"
 scdet_filter_select="scene_sad"
+sdl_ni_quadra_filter_deps="swscale sdl2"
 select_filter_select="scene_sad"
 sharpness_vaapi_filter_deps="vaapi"
 showcqt_filter_deps="avcodec avformat swscale"
@@ -3726,7 +3747,7 @@ swscale_suggest="libm"
 
 avcodec_extralibs="pthreads_extralibs iconv_extralibs dxva2_extralibs"
 avfilter_extralibs="pthreads_extralibs"
-avutil_extralibs="d3d11va_extralibs nanosleep_extralibs pthreads_extralibs vaapi_drm_extralibs vaapi_x11_extralibs vdpau_x11_extralibs"
+avutil_extralibs="d3d11va_extralibs nanosleep_extralibs pthreads_extralibs vaapi_drm_extralibs vaapi_x11_extralibs vdpau_x11_extralibs libxcoder_extralibs"
 
 # programs
 ffmpeg_deps="avcodec avfilter avformat"
@@ -6490,6 +6511,8 @@ enabled libx264           && { check_pkg_config libx264 x264 "stdint.h x264.h" x
                              check_cpp_condition libx262 x264.h "X264_MPEG2"
 enabled libx265           && require_pkg_config libx265 x265 x265.h x265_api_get &&
                              require_cpp_condition libx265 x265.h "X265_BUILD >= 70"
+enabled libxcoder         && require_pkg_config libxcoder xcoder ni_device_api.h ni_device_open
+enabled libxcoder_logan   && require_pkg_config libxcoder_logan xcoder_logan ni_device_api_logan.h ni_logan_device_open
 enabled libxavs           && require libxavs "stdint.h xavs.h" xavs_encoder_encode "-lxavs $pthreads_extralibs $libm_extralibs"
 enabled libxavs2          && require_pkg_config libxavs2 "xavs2 >= 1.3.0" "stdint.h xavs2.h" xavs2_api_get
 enabled libxvid           && require libxvid xvid.h xvid_global -lxvidcore

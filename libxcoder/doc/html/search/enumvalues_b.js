@@ -1,0 +1,20 @@
+var searchData=
+[
+  ['xcoder_5ftest_5fforce_5fidr_5fframe_6449',['XCODER_TEST_FORCE_IDR_FRAME',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938a7d550a19d3502ca5e897af815a7cd43e',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5finvalid_5fref_5fframe_6450',['XCODER_TEST_INVALID_REF_FRAME',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938ad1a0c9b1a613d84f8800b1dcc5418e40',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5finvalid_5fref_5fframe_5fapi_6451',['XCODER_TEST_INVALID_REF_FRAME_API',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938acffe0585099def1deb38365d777dafeb',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5fbr_6452',['XCODER_TEST_RECONF_BR',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938ac5ef9d40d77fa81132df9ef8c2b50357',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5fbr_5fapi_6453',['XCODER_TEST_RECONF_BR_API',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938a88164aab2a49e1f0b9fedd1b7775d831',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5fend_6454',['XCODER_TEST_RECONF_END',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938abc7a0662c16466644f18f9257d5c3b1b',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5fframerate_6455',['XCODER_TEST_RECONF_FRAMERATE',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938a30e069bb6901a2087b5d39465fda14a1',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5fframerate_5fapi_6456',['XCODER_TEST_RECONF_FRAMERATE_API',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938a1e27ab6180f4f6c05a29f67e28ebc974',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5flong_5fterm_5fref_6457',['XCODER_TEST_RECONF_LONG_TERM_REF',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938aa7a1d5ab49ec3db56f524d60c24fd3c7',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5fltr_5fapi_6458',['XCODER_TEST_RECONF_LTR_API',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938a59497c19e50681430b3ac3f7e9915644',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5fltr_5finterval_6459',['XCODER_TEST_RECONF_LTR_INTERVAL',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938a53645c6316f3e784eee8d2a70c50d499',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5fltr_5finterval_5fapi_6460',['XCODER_TEST_RECONF_LTR_INTERVAL_API',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938a38eb344a7122400c06afdbae3c230a29',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5fmax_5fframe_5fsize_6461',['XCODER_TEST_RECONF_MAX_FRAME_SIZE',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938a375051100d8b20b45ca02d4a8039de55',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5fmax_5fframe_5fsize_5fapi_6462',['XCODER_TEST_RECONF_MAX_FRAME_SIZE_API',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938a9c0dbbae904cdfc84917bfbf12c2023e',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5foff_6463',['XCODER_TEST_RECONF_OFF',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938af8f62375e19c774d89e8825b592f1f61',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5fvui_5fhrd_6464',['XCODER_TEST_RECONF_VUI_HRD',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938a48827c235293d7cad776dbe9a506b466',1,'ni_device_api.h']]],
+  ['xcoder_5ftest_5freconf_5fvui_5fhrd_5fapi_6465',['XCODER_TEST_RECONF_VUI_HRD_API',['../ni__device__api_8h.html#a10e25e8577a58cd3a032c27a8cd05938a7abb000b70eb4eddc334c3af98169b64',1,'ni_device_api.h']]]
+];

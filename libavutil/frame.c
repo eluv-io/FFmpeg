@@ -26,6 +26,9 @@
 #include "mem.h"
 #include "samplefmt.h"
 #include "hwcontext.h"
+#if CONFIG_NI_QUADRA
+#include "ni_util.h"
+#endif
 
 #if FF_API_FRAME_GET_SET
 MAKE_ACCESSORS(AVFrame, frame, int64_t, best_effort_timestamp)
@@ -209,6 +212,58 @@ void av_frame_free(AVFrame **frame)
     av_freep(frame);
 }
 
+#if CONFIG_NI_QUADRA
+static int get_video_buffer_quadra(AVFrame *frame)
+{ //#include "ni_util.h"
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format);
+    int ret, i;
+    int plane_stride[4];
+    int plane_height[4];
+    if (!desc)
+        return AVERROR(EINVAL);
+
+    int bit_depth_factor = (desc->comp[0].depth + 7) / 8;
+    int is_nv12 = desc->nb_components == 2;
+    ni_get_hw_yuv420p_dim(frame->width, frame->height, bit_depth_factor,
+                          is_nv12, plane_stride, plane_height);
+    av_log(NULL, AV_LOG_TRACE, "get_video_buffer_quadra frame->width %d "
+           "bit_depth_factor %d nv12 %d dst_stride[0/1/2] %d/%d/%d\n",
+           frame->width, bit_depth_factor, is_nv12, plane_stride[0],
+           plane_stride[1], plane_stride[2]);
+    for (i = 0; i < AV_NUM_DATA_POINTERS; i++)
+    {
+        frame->linesize[i] = (i < desc->nb_components) ? plane_stride[i] : 0;
+    }
+    //beware the 2-pass unhandled condition
+
+    if ((ret = av_image_fill_pointers(frame->data, frame->format, plane_height[0],
+        NULL, frame->linesize)) < 0)
+        return ret;
+
+    frame->buf[0] = av_buffer_alloc_quadra(ret + 4096); //4k aligned with 4KB extra
+
+    if (!frame->buf[0]) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
+
+    if ((ret = av_image_fill_pointers(frame->data, frame->format, plane_height[0],
+        frame->buf[0]->data, frame->linesize)) < 0)
+        goto fail;
+    frame->data[3] = frame->data[2 - is_nv12] + plane_stride[2 - is_nv12]
+        * plane_height[2 - is_nv12]; //metadata space available
+
+    frame->extended_data = frame->data;
+    av_log(NULL, AV_LOG_TRACE, "D0 %p D1 %p D2 %p D3%p\n", frame->data[0],
+           frame->data[1], frame->data[2], frame->data[3]);
+
+    return 0;
+fail:
+    av_frame_unref(frame);
+    return ret;
+}
+#endif
+
 static int get_video_buffer(AVFrame *frame, int align)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format);
@@ -333,6 +388,19 @@ static int get_audio_buffer(AVFrame *frame, int align)
     return 0;
 
 }
+
+#if CONFIG_NI_QUADRA
+int av_frame_get_buffer_quadra(AVFrame *frame)
+{
+    if (frame->format < 0)
+        return AVERROR(EINVAL);
+
+    if (frame->width > 0 && frame->height > 0)
+        return get_video_buffer_quadra(frame);
+
+    return AVERROR(EINVAL);
+}
+#endif
 
 int av_frame_get_buffer(AVFrame *frame, int align)
 {

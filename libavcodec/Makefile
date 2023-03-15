@@ -17,6 +17,7 @@ HEADERS = ac3_parser.h                                                  \
           dxva2.h                                                       \
           jni.h                                                         \
           mediacodec.h                                                  \
+          ni_hevc_extradata.h                                           \
           packet.h                                                      \
           qsv.h                                                         \
           vaapi.h                                                       \
@@ -49,6 +50,7 @@ OBJS = ac3_parser.o                                                     \
        mathtables.o                                                     \
        mediacodec.o                                                     \
        mpeg12framerate.o                                                \
+       ni_hevc_extradata.o                                              \
        options.o                                                        \
        parser.o                                                         \
        parsers.o                                                        \
@@ -388,6 +390,18 @@ OBJS-$(CONFIG_H264_V4L2M2M_DECODER)    += v4l2_m2m_dec.o
 OBJS-$(CONFIG_H264_V4L2M2M_ENCODER)    += v4l2_m2m_enc.o
 OBJS-$(CONFIG_HAP_DECODER)             += hapdec.o hap.o
 OBJS-$(CONFIG_HAP_ENCODER)             += hapenc.o hap.o
+OBJS-$(CONFIG_H264_NI_LOGAN_DECODER)   += nidec_h264_logan.o nicodec_logan.o nidec_logan.o
+OBJS-$(CONFIG_H265_NI_LOGAN_DECODER)   += nidec_hevc_logan.o nicodec_logan.o nidec_logan.o
+OBJS-$(CONFIG_H264_NI_LOGAN_ENCODER)   += nienc_h264_logan.o nicodec_logan.o nienc_logan.o
+OBJS-$(CONFIG_H265_NI_LOGAN_ENCODER)   += nienc_hevc_logan.o nicodec_logan.o nienc_logan.o
+OBJS-$(CONFIG_H264_NI_QUADRA_DECODER)  += nidec_h264.o nicodec.o nidec.o
+OBJS-$(CONFIG_H265_NI_QUADRA_DECODER)  += nidec_hevc.o nicodec.o nidec.o
+OBJS-$(CONFIG_JPEG_NI_QUADRA_DECODER)  += nidec_jpeg.o nicodec.o nidec.o
+OBJS-$(CONFIG_VP9_NI_QUADRA_DECODER)   += nidec_vp9.o nicodec.o nidec.o
+OBJS-$(CONFIG_AV1_NI_QUADRA_ENCODER)   += nienc_av1.o nicodec.o nienc.o
+OBJS-$(CONFIG_H264_NI_QUADRA_ENCODER)  += nienc_h264.o nicodec.o nienc.o
+OBJS-$(CONFIG_H265_NI_QUADRA_ENCODER)  += nienc_hevc.o nicodec.o nienc.o
+OBJS-$(CONFIG_JPEG_NI_QUADRA_ENCODER)  += nienc_jpeg.o nicodec.o nidec.o
 OBJS-$(CONFIG_HCA_DECODER)             += hcadec.o
 OBJS-$(CONFIG_HCOM_DECODER)            += hcom.o
 OBJS-$(CONFIG_HEVC_DECODER)            += hevcdec.o hevc_mvs.o \
@@ -1151,8 +1165,11 @@ OBJS-$(CONFIG_H264_METADATA_BSF)          += h264_metadata_bsf.o h264_levels.o
 OBJS-$(CONFIG_H264_MP4TOANNEXB_BSF)       += h264_mp4toannexb_bsf.o
 OBJS-$(CONFIG_H264_REDUNDANT_PPS_BSF)     += h264_redundant_pps_bsf.o
 OBJS-$(CONFIG_HAPQA_EXTRACT_BSF)          += hapqa_extract_bsf.o hap.o
+OBJS-$(CONFIG_HEVC_FRAME_SPLIT_BSF)       += ni_hevc_frame_split_bsf.o ni_hevc_rbsp.o
 OBJS-$(CONFIG_HEVC_METADATA_BSF)          += h265_metadata_bsf.o h265_profile_level.o
 OBJS-$(CONFIG_HEVC_MP4TOANNEXB_BSF)       += hevc_mp4toannexb_bsf.o
+OBJS-$(CONFIG_HEVC_RAWTOTILE_BSF)         += ni_hevc_rawtotile_bsf.o ni_hevc_rbsp.o
+OBJS-$(CONFIG_HEVC_TILE_REPACK_BSF)       += ni_hevc_tile_repack_bsf.o
 OBJS-$(CONFIG_IMX_DUMP_HEADER_BSF)        += imx_dump_header_bsf.o
 OBJS-$(CONFIG_MJPEG2JPEG_BSF)             += mjpeg2jpeg_bsf.o
 OBJS-$(CONFIG_MJPEGA_DUMP_HEADER_BSF)     += mjpega_dump_header_bsf.o

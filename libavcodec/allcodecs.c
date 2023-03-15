@@ -782,6 +782,18 @@ extern AVCodec ff_ac3_mf_encoder;
 extern AVCodec ff_h263_v4l2m2m_encoder;
 extern AVCodec ff_libaom_av1_decoder;
 /* hwaccel hooks only, so prefer external decoders */
+extern AVCodec ff_h264_ni_quadra_decoder;
+extern AVCodec ff_h265_ni_quadra_decoder;
+extern AVCodec ff_vp9_ni_quadra_decoder;
+extern AVCodec ff_jpeg_ni_quadra_decoder;
+extern AVCodec ff_h264_ni_quadra_encoder;
+extern AVCodec ff_h265_ni_quadra_encoder;
+extern AVCodec ff_av1_ni_quadra_encoder;
+extern AVCodec ff_jpeg_ni_quadra_encoder;
+extern AVCodec ff_h264_ni_logan_decoder;
+extern AVCodec ff_h265_ni_logan_decoder;
+extern AVCodec ff_h264_ni_logan_encoder;
+extern AVCodec ff_h265_ni_logan_encoder;
 extern AVCodec ff_av1_decoder;
 extern AVCodec ff_av1_cuvid_decoder;
 extern AVCodec ff_av1_qsv_decoder;

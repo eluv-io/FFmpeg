@@ -2085,6 +2085,26 @@ static const AVPixFmtDescriptor av_pix_fmt_descriptors[AV_PIX_FMT_NB] = {
         .name = "qsv",
         .flags = AV_PIX_FMT_FLAG_HWACCEL,
     },
+    // NETINT: AV_PIX_FMT_NI_LOGAN pixel format for Logan HW frame
+    [AV_PIX_FMT_NI_LOGAN] = {
+        .name = "ni_logan",
+        .flags = AV_PIX_FMT_FLAG_HWACCEL,
+    },
+    // NETINT: AV_PIX_FMT_NI_QUAD pixel format for Quadra HW frame
+    [AV_PIX_FMT_NI_QUAD] = {
+        .name = "ni_quadra",
+        .flags = AV_PIX_FMT_FLAG_HWACCEL,
+    },
+    // NETINT: AV_PIX_FMT_NI_QUAD_8_TILE_4X4 pixel format for Quadra internally compressed frame
+    [AV_PIX_FMT_NI_QUAD_8_TILE_4X4] = {
+        .name = "ni_quadra_8_tile4x4",
+        .flags = AV_PIX_FMT_FLAG_HWACCEL,
+    },
+    // NETINT: AV_PIX_FMT_NI_QUAD_10_TILE_4X4 pixel format for Quadra internally compressed frame
+    [AV_PIX_FMT_NI_QUAD_10_TILE_4X4] = {
+        .name = "ni_quadra_10_tile4x4",
+        .flags = AV_PIX_FMT_FLAG_HWACCEL,
+    },
     [AV_PIX_FMT_MEDIACODEC] = {
         .name = "mediacodec",
         .flags = AV_PIX_FMT_FLAG_HWACCEL,
@@ -2394,6 +2414,19 @@ static const AVPixFmtDescriptor av_pix_fmt_descriptors[AV_PIX_FMT_NB] = {
     [AV_PIX_FMT_VULKAN] = {
         .name = "vulkan",
         .flags = AV_PIX_FMT_FLAG_HWACCEL,
+    },
+    // NETINT: Add AV_PIX_FMT_BGRP for avfilter with BG and ROI
+    [AV_PIX_FMT_BGRP] = {
+        .name = "bgrp",
+        .nb_components = 3,
+        .log2_chroma_w = 0,
+        .log2_chroma_h = 0,
+        .comp = {
+            { 2, 1, 0, 0, 8, 0, 7, 1 },        /* R */
+            { 1, 1, 0, 0, 8, 0, 7, 1 },        /* G */
+            { 0, 1, 0, 0, 8, 0, 7, 1 },        /* B */
+        },
+        .flags = AV_PIX_FMT_FLAG_PLANAR | AV_PIX_FMT_FLAG_RGB,
     },
 };
 #if FF_API_PLUS1_MINUS1

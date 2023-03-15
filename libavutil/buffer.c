@@ -64,6 +64,22 @@ void av_buffer_default_free(void *opaque, uint8_t *data)
     av_free(data);
 }
 
+AVBufferRef *av_buffer_alloc_quadra(int size)
+{
+    AVBufferRef *ret = NULL;
+    uint8_t    *data = NULL;
+
+    data = av_malloc_quadra(size);
+    if (!data)
+        return NULL;
+
+    ret = av_buffer_create(data, size, av_buffer_default_free, NULL, 0);
+    if (!ret)
+        av_freep(&data);
+
+    return ret;
+}
+
 AVBufferRef *av_buffer_alloc(buffer_size_t size)
 {
     AVBufferRef *ret = NULL;

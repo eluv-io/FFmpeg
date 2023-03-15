@@ -45,6 +45,10 @@
 #include "hwconfig.h"
 #include "profiles.h"
 
+#if CONFIG_NI_LOGAN
+#include <ni_device_api_logan.h>
+#endif
+
 const uint8_t ff_hevc_pel_weight[65] = { [2] = 0, [4] = 1, [6] = 2, [8] = 3, [12] = 4, [16] = 5, [24] = 6, [32] = 7, [48] = 8, [64] = 9 };
 
 /**
@@ -2891,6 +2895,19 @@ static int set_side_data(HEVCContext *s)
         }
     }
 
+#if CONFIG_NI_LOGAN
+    // NETINT: NI HEVC custom SEI
+    if (s->sei.ni_custom.buf_ref) {
+        HEVCSEINICustom *ni_custom = &s->sei.ni_custom;
+        AVFrameSideData* sd = av_frame_new_side_data_from_buf(out,
+                                                              AV_FRAME_DATA_NETINT_CUSTOM_SEI,
+                                                              ni_custom->buf_ref);
+        if (!sd)
+            av_buffer_unref(&ni_custom->buf_ref);
+        ni_custom->buf_ref = NULL;
+    }
+#endif
+
     return 0;
 }
 
@@ -3014,6 +3031,9 @@ static int decode_nal_unit(HEVCContext *s, const H2645NAL *nal)
             if (ret < 0)
                 goto fail;
         }
+#if CONFIG_NI_LOGAN
+        s->sei.ni_custom.type = s->custom_sei_type;
+#endif
         ret = ff_hevc_decode_nal_sei(gb, s->avctx, &s->sei, &s->ps, s->nal_unit_type);
         if (ret < 0)
             goto fail;
@@ -3143,6 +3163,9 @@ fail:
 static int decode_nal_units(HEVCContext *s, const uint8_t *buf, int length)
 {
     int i, ret = 0;
+#if CONFIG_NI_LOGAN
+    int got_slice = -1;
+#endif
     int eos_at_start = 1;
 
     s->ref = NULL;
@@ -3182,6 +3205,52 @@ static int decode_nal_units(HEVCContext *s, const uint8_t *buf, int length)
             && ff_hevc_nal_is_nonref(nal->type)) || nal->nuh_layer_id > 0)
             continue;
 
+#if CONFIG_NI_LOGAN
+        switch (nal->type) {
+            case HEVC_NAL_SEI_PREFIX:
+            case HEVC_NAL_SEI_SUFFIX:
+                if (got_slice >= 0) {
+                    /* We do NOT decide SEI location according to NALU type, we
+                     * detect the actual order of NALU in AVPacket instead.
+                     */
+                    s->sei.ni_custom.location = NI_LOGAN_CUSTOM_SEI_LOC_AFTER_VCL;
+                } else {
+                    s->sei.ni_custom.location = NI_LOGAN_CUSTOM_SEI_LOC_BEFORE_VCL;
+                }
+                break;
+            case HEVC_NAL_TRAIL_R:
+            case HEVC_NAL_TRAIL_N:
+            case HEVC_NAL_TSA_N:
+            case HEVC_NAL_TSA_R:
+            case HEVC_NAL_STSA_N:
+            case HEVC_NAL_STSA_R:
+            case HEVC_NAL_BLA_W_LP:
+            case HEVC_NAL_BLA_W_RADL:
+            case HEVC_NAL_BLA_N_LP:
+            case HEVC_NAL_IDR_W_RADL:
+            case HEVC_NAL_IDR_N_LP:
+            case HEVC_NAL_CRA_NUT:
+            case HEVC_NAL_RADL_N:
+            case HEVC_NAL_RADL_R:
+            case HEVC_NAL_RASL_N:
+            case HEVC_NAL_RASL_R:
+                // For soft decoding in FFmpeg we have to assure that the non
+                // VCL slice be decoded before any VCL slice to make the custom
+                // SEI pass through. So if any VCL is found before custom SEI in
+                // the packet we need to parse the suffix SEI (even it is
+                // labeled as prefix) ahead.
+                if (i != s->pkt.nb_nals - 1) {
+                    H2645NAL *last_nal = &s->pkt.nals[s->pkt.nb_nals - 1];
+                    if (last_nal->type != nal->type) {
+                        got_slice = i;
+                        continue;
+                    }
+                }
+            default:
+                break;
+        }
+#endif
+
         ret = decode_nal_unit(s, nal);
         if (ret >= 0 && s->overlap > 2)
             ret = AVERROR_INVALIDDATA;
@@ -3191,6 +3260,20 @@ static int decode_nal_units(HEVCContext *s, const uint8_t *buf, int length)
             goto fail;
         }
     }
+
+#if CONFIG_NI_LOGAN
+    /* We need to decode slice as the last NALU for custom SEI decoding ahead */
+    if (got_slice >= 0) {
+        ret = decode_nal_unit(s, &s->pkt.nals[got_slice]);
+        if (ret >= 0 && s->overlap > 2)
+            ret = AVERROR_INVALIDDATA;
+        if (ret < 0) {
+            av_log(s->avctx, AV_LOG_WARNING,
+                   "Error parsing NAL unit #%d.\n", i);
+            goto fail;
+        }
+    }
+#endif
 
 fail:
     if (s->ref && s->threads_type == FF_THREAD_FRAME)
@@ -3557,6 +3640,10 @@ static int hevc_update_thread_context(AVCodecContext *dst,
     s->threads_number      = s0->threads_number;
     s->threads_type        = s0->threads_type;
 
+#if CONFIG_NI_LOGAN
+    s->custom_sei_type     = s0->custom_sei_type;
+#endif
+
     if (s0->eos) {
         s->seq_decode = (s->seq_decode + 1) & 0xff;
         s->max_ra = INT_MAX;
@@ -3594,6 +3681,9 @@ static int hevc_update_thread_context(AVCodecContext *dst,
     s->sei.mastering_display    = s0->sei.mastering_display;
     s->sei.content_light        = s0->sei.content_light;
     s->sei.alternative_transfer = s0->sei.alternative_transfer;
+#if CONFIG_NI_LOGAN
+    s->sei.ni_custom            = s0->sei.ni_custom;
+#endif
 
     ret = export_stream_params_from_sei(s);
     if (ret < 0)
@@ -3657,6 +3747,11 @@ static const AVOption options[] = {
         AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, PAR },
     { "strict-displaywin", "stricly apply default display window size", OFFSET(apply_defdispwin),
         AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, PAR },
+#if CONFIG_NI_LOGAN
+    // NETINT: Extra HEVC decoding option
+    { "custom_sei_passthru", "Specify the custom SEI type to passthrough", OFFSET(custom_sei_type),
+        AV_OPT_TYPE_INT, {.i64 = -1}, -1, 254, PAR },
+#endif
     { NULL },
 };
 

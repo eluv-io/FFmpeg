@@ -101,6 +101,13 @@ typedef struct AVBufferRef {
 } AVBufferRef;
 
 /**
+* Allocate an AVBuffer of the given size using av_malloc_quadra().
+*
+* @return an AVBufferRef of given size or NULL when out of memory
+*/
+AVBufferRef *av_buffer_alloc_quadra(int size);
+
+/**
  * Allocate an AVBuffer of the given size using av_malloc().
  *
  * @return an AVBufferRef of given size or NULL when out of memory
