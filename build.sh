@@ -28,10 +28,10 @@ if [ "$(uname)" == "Darwin" ]; then
     ${CONFIGURE_TO_USE} ${command_options}
 elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
     if [ "$1" == "--DEBUG" ] || [ "$1" == "--debug" ]; then
-        command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags= --extra-cflags=-fPIC --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --disable-lzma --disable-stripping --enable-libxcoder --enable-ni_quadra --enable-libxcoder_logan --enable-ni_logan --disable-filter=hwupload_ni_logan --enable-debug=3 --extra-cflags=-ggdb --extra-cflags=-O0 --extra-cflags=-g --extra-ldflags=-L${DIST}/lib"
+        command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags= --extra-cflags=-fPIC --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --disable-lzma --disable-stripping --enable-libxcoder --enable-ni_quadra --disable-filter=hwupload_ni_logan --enable-debug=3 --extra-cflags=-ggdb --extra-cflags=-O0 --extra-cflags=-g --extra-ldflags=-L${DIST}/lib"
         CONFIGURE_TO_USE="./configure.debug"
     else
-        command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags= --extra-cflags=-fPIC --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --disable-lzma --enable-libxcoder --enable-ni_quadra --enable-libxcoder_logan --enable-ni_logan --disable-filter=hwupload_ni_logan --extra-ldflags=-L${DIST}/lib"
+        command_options="--prefix=${DIST} --enable-libfreetype --enable-libfribidi --enable-libfontconfig --enable-shared --enable-avresample --enable-pthreads --enable-version3 --enable-hardcoded-tables --cc=clang --host-cflags=-fPIC --host-ldflags= --extra-cflags=-fPIC --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libxvid --enable-opencl --disable-lzma --enable-libxcoder --enable-ni_quadra --disable-filter=hwupload_ni_logan --extra-ldflags=-L${DIST}/lib"
     fi
     FLAGS_NVIDIA=""
     if [ -d /usr/local/cuda/ ]
