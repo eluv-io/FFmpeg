@@ -37,7 +37,7 @@
 #endif
 #include "ni_log.h"
 
-static ni_log_level_t ni_log_level = NI_LOG_INFO;
+static ni_log_level_t ni_log_level = NI_LOG_ERROR;
 static void (*ni_log_callback)(int, const char*, va_list) =
     ni_log_default_callback;
 

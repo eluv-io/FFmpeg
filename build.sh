@@ -12,7 +12,11 @@ CONFIGURE_TO_USE="./configure"
 (
     export DIST
     cd libxcoder
-    ./build.sh
+    if [ "$1" == "--DEBUG" ] || [ "$1" == "--debug" ]; then
+        ./build.sh --gdb
+    else
+        ./build.sh
+    fi
 )
 
 export PKG_CONFIG_PATH=${DIST}/lib/pkgconfig

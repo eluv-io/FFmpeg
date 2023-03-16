@@ -1010,7 +1010,10 @@ av_cold int xcoder_encode_init(AVCodecContext *avctx)
   XCoderH265EncContext *ctx = avctx->priv_data;
   AVHWFramesContext *avhwf_ctx;
   int ret;
+#if 0
+  /* stop logging into the terminal (Reza) */
   ni_log_set_level(ff_to_ni_log_level(av_log_get_level()));
+#endif
 
   av_log(avctx, AV_LOG_VERBOSE, "XCoder encode init\n");
 
