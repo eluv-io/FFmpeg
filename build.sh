@@ -1,7 +1,9 @@
 #!/bin/bash
 ffmpeg_proj_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-DIST=${ffmpeg_proj_dir}/"dist"
+if [ -z "$DIST" ]; then
+    DIST=${ffmpeg_proj_dir}/"dist"
+fi
 
 if [ ! -d ${DIST} ]; then
     mkdir -p ${DIST}
@@ -22,7 +24,7 @@ command_options=(
     --enable-pthreads
     --enable-version3
     --enable-hardcoded-tables
-    --cc=clang 
+    --cc=clang
     --host-cflags=-fPIC
     --host-ldflags=
     --enable-gpl
@@ -77,7 +79,7 @@ elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
         fi
     fi
     echo "configuring with command_options=${command_options[@]}"
-    
+
 elif [ "$(expr substr $(uname -s) 1 10)" == "MINGW32_NT" ]; then
     echo "MINGW32 Not yet supported"
     exit 1
