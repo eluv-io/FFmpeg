@@ -19,7 +19,7 @@ CONFIGURE_TO_USE="./configure"
     fi
 )
 
-export PKG_CONFIG_PATH=${DIST}/lib/pkgconfig
+export PKG_CONFIG_PATH=${DIST}/lib/pkgconfig:${PKG_CONFIG_PATH}
 
 if [ "$(uname)" == "Darwin" ]; then
     if [ "$1" == "--DEBUG" ] || [ "$1" == "--debug" ]; then
