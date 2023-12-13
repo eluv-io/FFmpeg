@@ -10,6 +10,7 @@ CONFIGURE_TO_USE="./configure"
 
 # Build netint libxcoder and install it in $DIST
 (
+if [ "$(uname -s)" != "Darwin" ]; then
     export DIST
     cd libxcoder
     if [ "$1" == "--DEBUG" ] || [ "$1" == "--debug" ]; then
@@ -17,6 +18,7 @@ CONFIGURE_TO_USE="./configure"
     else
         ./build.sh
     fi
+fi
 )
 
 export PKG_CONFIG_PATH=${DIST}/lib/pkgconfig:${PKG_CONFIG_PATH}

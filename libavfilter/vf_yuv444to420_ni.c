@@ -22,6 +22,7 @@
  * yuv444 to yuv420
  */
 
+#ifndef __APPLE__
 #include <stdio.h>
 #include "libavutil/attributes.h"
 #include "libavutil/avstring.h"
@@ -285,3 +286,7 @@ AVFilter ff_vf_yuv444to420_ni_quadra = {
 #endif
     .flags         = AVFILTER_FLAG_DYNAMIC_OUTPUTS,
 };
+#else
+#include "avfilter.h"
+AVFilter ff_vf_yuv444to420_ni_quadra = {};
+#endif

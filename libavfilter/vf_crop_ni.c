@@ -24,6 +24,7 @@
  * video crop filter
  */
 
+#ifndef __APPLE__
 #include <stdio.h>
 
 #include "avfilter.h"
@@ -615,3 +616,7 @@ AVFilter ff_vf_crop_ni_quadra = {
     .query_formats   = query_formats,
 #endif
 };
+#else
+#include "avfilter.h"
+AVFilter ff_vf_crop_ni_quadra = {};
+#endif

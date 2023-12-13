@@ -25,6 +25,7 @@
  * XCoder codec lib wrapper.
  */
 
+#ifndef __APPLE__
 #ifndef AVFILTER_NIFILTER_H
 #define AVFILTER_NIFILTER_H
 
@@ -48,4 +49,5 @@ void ff_ni_clone_hwframe_ctx(AVHWFramesContext *in_frames_ctx,
                              AVHWFramesContext *out_frames_ctx,
                              ni_session_context_t *ctx);
 
+#endif
 #endif

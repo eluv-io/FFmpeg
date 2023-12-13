@@ -27,6 +27,7 @@
  * overlay one video on top of another
  */
 
+#ifndef __APPLE__
 #include "avfilter.h"
 #include "formats.h"
 #include "libavutil/common.h"
@@ -726,3 +727,7 @@ AVFilter ff_vf_overlay_ni_quadra = {
 #endif
     .flags_internal= FF_FILTER_FLAG_HWFRAME_AWARE
 };
+#else
+#include "avfilter.h"
+AVFilter ff_vf_overlay_ni_quadra = {};
+#endif

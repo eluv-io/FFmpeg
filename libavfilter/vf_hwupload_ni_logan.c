@@ -16,6 +16,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#ifndef __APPLE__
 #include "libavutil/buffer.h"
 #include "libavutil/hwcontext.h"
 #include "libavutil/hwcontext_ni_logan.h"
@@ -23,7 +24,6 @@
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
 
-#include "avfilter.h"
 #include "formats.h"
 #include "internal.h"
 #include "video.h"
@@ -228,3 +228,7 @@ AVFilter ff_vf_hwupload_ni_logan = {
 
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };
+#else
+#include "avfilter.h"
+AVFilter ff_vf_hwupload_ni_logan = {};
+#endif

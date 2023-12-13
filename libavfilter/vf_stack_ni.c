@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#ifndef __APPLE__
 #include "libavutil/avstring.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
@@ -727,3 +728,7 @@ AVFilter ff_vf_xstack_ni_quadra = {
     .query_formats = query_formats,
 #endif
 };
+#else
+#include "avfilter.h"
+AVFilter ff_vf_xstack_ni_quadra = {};
+#endif

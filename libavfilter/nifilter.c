@@ -22,7 +22,7 @@
  * @file
  * video common filter routines
  */
-
+#ifndef __APPLE__
 #include <stdio.h>
 
 #include <ni_device_api.h>
@@ -279,3 +279,4 @@ void ff_ni_clone_hwframe_ctx(AVHWFramesContext *in_frames_ctx,
   }
   
 }
+#endif
