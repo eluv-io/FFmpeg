@@ -25,6 +25,7 @@
  * rotation filter, based on the FFmpeg rotate filter
 */
 
+#ifndef __APPLE__
 #include <string.h>
 
 #include "libavutil/eval.h"
@@ -717,3 +718,7 @@ AVFilter ff_vf_rotate_ni_quadra = {
 #endif
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };
+#else
+#include "avfilter.h"
+AVFilter ff_vf_rotate_ni_quadra = {};
+#endif

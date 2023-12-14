@@ -24,6 +24,7 @@
  * audio and video splitter
  */
 
+#ifndef __APPLE__
 #include <stdio.h>
 
 #include "libavutil/attributes.h"
@@ -534,3 +535,7 @@ AVFilter ff_vf_split_ni_quadra = {
     .query_formats  = query_formats,
 #endif
 };
+#else
+#include "avfilter.h"
+AVFilter ff_vf_split_ni_quadra = {};
+#endif

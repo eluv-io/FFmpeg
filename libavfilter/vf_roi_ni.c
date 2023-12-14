@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#ifndef __APPLE__
 #include <float.h>
 #include <math.h>
 #include <stdio.h>
@@ -1343,3 +1344,7 @@ AVFilter ff_vf_roi_ni_quadra = {
     .query_formats  = ni_roi_query_formats,
 #endif
 };
+#else
+#include "avfilter.h"
+AVFilter ff_vf_roi_ni_quadra = {};
+#endif

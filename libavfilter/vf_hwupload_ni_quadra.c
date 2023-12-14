@@ -16,6 +16,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#ifndef __APPLE__
 #include "libavutil/buffer.h"
 #include "libavutil/hwcontext.h"
 #include "libavutil/hwcontext_ni_quad.h"
@@ -268,3 +269,7 @@ AVFilter ff_vf_hwupload_ni_quadra = {
     .query_formats = niupload_query_formats,
 #endif
 };
+#else
+#include "avfilter.h"
+AVFilter ff_vf_hwupload_ni_quadra = {};
+#endif

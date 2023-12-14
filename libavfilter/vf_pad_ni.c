@@ -24,6 +24,7 @@
  * video padding filter
  */
 
+#ifndef __APPLE__
 #include <float.h>  /* DBL_MAX */
 
 #include "avfilter.h"
@@ -616,3 +617,7 @@ AVFilter ff_vf_pad_ni_quadra = {
     .query_formats = query_formats,
 #endif
 };
+#else
+#include "avfilter.h"
+AVFilter ff_vf_pad_ni_quadra = {};
+#endif

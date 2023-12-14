@@ -21,6 +21,7 @@
  * yuv420 to yuv444
  */
 
+#ifndef __APPLE__
 #include "avfilter.h"
 #include "formats.h"
 #include "libavutil/common.h"
@@ -326,3 +327,7 @@ AVFilter ff_vf_yuv420to444_ni_quadra = {
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                      AVFILTER_FLAG_SLICE_THREADS,
 };
+#else
+#include "avfilter.h"
+AVFilter ff_vf_yuv420to444_ni_quadra = {};
+#endif
