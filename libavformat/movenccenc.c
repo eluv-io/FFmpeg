@@ -563,9 +563,7 @@ static int mov_cenc_ctr_init(MOVMuxCencContext* ctx, uint8_t* key, int bitexact)
     if (!bitexact) {
         av_aes_ctr_set_random_iv(ctx->aes_ctr);
     }
-
-    ctx->use_subsamples = 0;
-
+    
     return 0;
 }
 
