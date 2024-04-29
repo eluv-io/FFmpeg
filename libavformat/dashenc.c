@@ -2459,7 +2459,7 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
      */
 
     if (pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
-        elapsed_duration >= c->seg_duration_ts)
+        elapsed_duration + frame_duration_variation >= c->seg_duration_ts)
         /* av_compare_ts(elapsed_duration, st->time_base,
                       seg_end_duration, AV_TIME_BASE_Q) >= 0)
         */
