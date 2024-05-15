@@ -954,7 +954,7 @@ static int write_adaptation_set(AVFormatContext *s, AVIOContext *out, int as_ind
 
         if (os->bit_rate > 0)
             snprintf(bandwidth_str, sizeof(bandwidth_str), " bandwidth=\"%d\"", os->bit_rate);
-        else if (final) {
+        else if (final && (c->total_duration > 0)) {
             int average_bit_rate = os->pos * 8 * AV_TIME_BASE / c->total_duration;
             snprintf(bandwidth_str, sizeof(bandwidth_str), " bandwidth=\"%d\"", average_bit_rate);
         } else if (os->first_segment_bit_rate > 0)
@@ -2459,7 +2459,7 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
      */
 
     if (pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
-        elapsed_duration >= c->seg_duration_ts)
+        elapsed_duration + frame_duration_variation >= c->seg_duration_ts)
         /* av_compare_ts(elapsed_duration, st->time_base,
                       seg_end_duration, AV_TIME_BASE_Q) >= 0)
         */
