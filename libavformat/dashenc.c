@@ -2417,7 +2417,7 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     if (s->prev_pts != AV_NOPTS_VALUE) {
         frame_duration_variation = (s->max_frame_duration - s->min_frame_duration) * 2;
-        if (frame_duration_variation > pkt->duration)
+        if (frame_duration_variation >= pkt->duration)
             frame_duration_variation = pkt->duration - 1;
     }
 
