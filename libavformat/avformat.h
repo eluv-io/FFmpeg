@@ -2825,16 +2825,20 @@ void av_dump_format(AVFormatContext *ic,
  *
  * Also handles the '%0nd' format where 'n' is the total number
  * of digits and '%%'.
+ * 
+ * ELUVIO MERGE NOTE: This was modified in order to adjust the number from int to int64_t. When
+ * upgrading to ffmpeg 7.2, this change will become unnecessary, and the commit can be discarded
+ * when merging/rebasing.
  *
  * @param buf destination buffer
  * @param buf_size destination buffer size
  * @param path numbered sequence string
- * @param number frame number
+ * @param number frame number or PTS
  * @param flags AV_FRAME_FILENAME_FLAGS_*
  * @return 0 if OK, -1 on format error
  */
 int av_get_frame_filename2(char *buf, int buf_size,
-                          const char *path, int number, int flags);
+                          const char *path, int64_t number, int flags);
 
 int av_get_frame_filename(char *buf, int buf_size,
                           const char *path, int number);

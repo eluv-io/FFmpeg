@@ -2415,8 +2415,11 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     int64_t frame_duration_variation = 0;
 
-    if (s->prev_pts != AV_NOPTS_VALUE)
+    if (s->prev_pts != AV_NOPTS_VALUE) {
         frame_duration_variation = (s->max_frame_duration - s->min_frame_duration) * 2;
+        if (frame_duration_variation > pkt->duration)
+            frame_duration_variation = pkt->duration - 1;
+    }
 
     /*
      * This is just for backward compatibility and not break anything.
@@ -2488,8 +2491,8 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
                         os->producer_reference_time.wallclock);
 
         av_log(s, AV_LOG_DEBUG, "dash_write_packet end of segment pts=%"PRId64" duration=%"PRId64" start_pts=%"PRId64
-            " max_pts=%"PRId64" elapsed_duration=%"PRId64" seg_duration_ts=%"PRId64,
-            pkt->pts, pkt->duration, os->start_pts, os->max_pts, elapsed_duration, c->seg_duration_ts);
+            " max_pts=%"PRId64" elapsed_duration=%"PRId64" seg_duration_ts=%"PRId64", frame_duration_variation=%"PRId64,
+            pkt->pts, pkt->duration, os->start_pts, os->max_pts, elapsed_duration, c->seg_duration_ts, frame_duration_variation);
 
 
         if ((ret = dash_flush(s, 0, pkt->stream_index)) < 0)
