@@ -49,8 +49,8 @@ typedef struct {
     uint16_t subsample_count;
     size_t auxiliary_info_subsample_start; /* location to write subsample_count */
 
-    AVCodecParserContext *parser;
-    AVCodecContext *parser_avctx;
+    struct AVCodecParserContext *parser;
+    struct AVCodecContext *parser_avctx;
 } MOVMuxCencContext;
 
 /**

@@ -255,14 +255,15 @@ int ff_mov_cenc_avc_parse_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
     const uint8_t *start = pkt->data;
     const uint8_t *end = start + pkt->size;
     const uint8_t *nal_start, *nal_end;
+    uint8_t *parsed_buf_out;
+    int parsed_buf_out_size;
+    int header_bits;
 
     ret = mov_cenc_start_packet(ctx);
     if (ret) {
         return ret;
     }
 
-    uint8_t *parsed_buf_out;
-    int parsed_buf_out_size;
     av_parser_parse2(ctx->parser, ctx->parser_avctx, &parsed_buf_out,
         &parsed_buf_out_size, pkt->data, pkt->size, pkt->pts, pkt->dts, pkt->pos);
     H2645NAL* nals = (H2645NAL*) avpriv_h264_extract_nals(ctx->parser);
@@ -284,7 +285,7 @@ int ff_mov_cenc_avc_parse_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
         clear_bytes += 4;
 
         naltype = *nal_start & 0x1f;
-        int header_bits = nals[nal_index].slice_header_len_bits;
+        header_bits = nals[nal_index].slice_header_len_bits;
         slice_header_len = (header_bits + 7) / 8;
         if ((naltype == 1 || naltype == 5) &&
              nalsize >= slice_header_len + AES_BLOCK_SIZE)

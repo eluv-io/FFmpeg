@@ -1914,24 +1914,10 @@ typedef struct AVFormatContext {
      * @see skip_estimate_duration_from_pts
      */
     int64_t duration_probesize;
-    
-    char *protocol_blacklist;
-
-    /**
-     * The maximum number of streams.
-     * - encoding: unused
-     * - decoding: set by user
-     */
-    int max_streams;
 
     /* Special for avpipe, holds out_handler */
     void *avpipe_opaque;
-    /**
-     * Skip duration calcuation in estimate_timings_from_pts.
-     * - encoding: unused
-     * - decoding: set by user
-     */
-    int skip_estimate_duration_from_pts;
+    
     /*
      * Keep track of min and max of frame duration and calculate the following:
      * frame_duration_variation = (max_frame_duration - min_frame_duration) * 2;
@@ -1940,13 +1926,6 @@ typedef struct AVFormatContext {
     int64_t prev_pts;
     int64_t min_frame_duration;
     int64_t max_frame_duration;
-
-    /**
-     * Maximum number of packets that can be probed
-     * - encoding: unused
-     * - decoding: set by user
-     */
-    int max_probe_packets;
 } AVFormatContext;
 
 /**

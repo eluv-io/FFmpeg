@@ -39,12 +39,14 @@
 #include "get_bits.h"
 #include "golomb.h"
 #include "h264.h"
+#include "h264dec.h"
 #include "h264dsp.h"
 #include "h264_parse.h"
 #include "h264_sei.h"
 #include "h264_ps.h"
 #include "h2645_parse.h"
 #include "h264data.h"
+#include "internal.h"
 #include "mpegutils.h"
 #include "parser.h"
 #include "refstruct.h"
@@ -265,7 +267,7 @@ static int decode_ref_pic_marking(H264ParseContext *p, GetBitContext *gb,
 {
     int i;
     MMCO *mmco = p->mmco;
-    int nb_mmco = 0;
+    // int nb_mmco = 0;
     int explicit_ref_marking;
 
     if (nal->type == H264_NAL_IDR_SLICE) { // FIXME fields
@@ -273,7 +275,7 @@ static int decode_ref_pic_marking(H264ParseContext *p, GetBitContext *gb,
         if (get_bits1(gb)) {
             mmco[0].opcode   = MMCO_LONG;
             mmco[0].long_arg = 0;
-            nb_mmco          = 1;
+            // nb_mmco          = 1;
         }
         explicit_ref_marking = 1;
     } else {
@@ -298,7 +300,7 @@ static int decode_ref_pic_marking(H264ParseContext *p, GetBitContext *gb,
                         av_log(logctx, AV_LOG_ERROR,
                                "illegal long ref in memory management control "
                                "operation %d\n", opcode);
-                        nb_mmco = i;
+                        // nb_mmco = i;
                         return -1;
                     }
                     mmco[i].long_arg = long_arg;
@@ -308,13 +310,13 @@ static int decode_ref_pic_marking(H264ParseContext *p, GetBitContext *gb,
                     av_log(logctx, AV_LOG_ERROR,
                            "illegal memory management control operation %d\n",
                            opcode);
-                    nb_mmco = i;
+                    // nb_mmco = i;
                     return -1;
                 }
                 if (opcode == MMCO_END)
                     break;
             }
-            nb_mmco = i;
+            // nb_mmco = i;
         }
     }
 
@@ -401,10 +403,12 @@ static int parse_slice(AVCodecParserContext *s, AVCodecContext *avctx,
         if (ret < 0 && (avctx->err_recognition & AV_EF_EXPLODE))
             return AVERROR_INVALIDDATA;
     }
+    
     /* FIXME: MMCO_RESET could appear in non-first slice.
     *        Maybe, we should parse all undisposable non-IDR slice of this
     *        picture until encountering MMCO_RESET in a slice of it. */
-    for (i = 0; (unsigned int)i < MAX_MMCO_COUNT; i++) {
+    /* Compare with: got_reset = scan_mmco_reset(s, &nal.gb, avctx);*/
+    for (i = 0; (unsigned int)i < H264_MAX_MMCO_COUNT; i++) {
         if (p->mmco[i].opcode == MMCO_END)
             break;
         if (p->mmco[i].opcode == MMCO_RESET) {
@@ -507,6 +511,15 @@ static int parse_slice(AVCodecParserContext *s, AVCodecContext *avctx,
         }
         p->last_picture_structure = s->picture_structure;
         p->last_frame_num = p->poc.frame_num;
+    }
+
+    if (sps->timing_info_present_flag)
+    {
+        int64_t den = sps->time_scale;
+        if (p->sei.common.unregistered.x264_build < 44U)
+            den *= 2;
+        av_reduce(&avctx->framerate.den, &avctx->framerate.num,
+                  sps->num_units_in_tick * 2, den, 1 << 30);
     }
 
     /* cabac_init_idc */
@@ -794,114 +807,8 @@ static inline int parse_nal_units(AVCodecParserContext *s,
             if (ret != 0) {
                 goto fail;
             }
-
             nal->slice_header_len_bits = nal->gb.index;
-
-            /* Set up the prev_ values for decoding POC of the next picture. */
-            p->poc.prev_frame_num        = got_reset ? 0 : p->poc.frame_num;
-            p->poc.prev_frame_num_offset = got_reset ? 0 : p->poc.frame_num_offset;
-            if (nal.ref_idc != 0) {
-                if (!got_reset) {
-                    p->poc.prev_poc_msb = p->poc.poc_msb;
-                    p->poc.prev_poc_lsb = p->poc.poc_lsb;
-                } else {
-                    p->poc.prev_poc_msb = 0;
-                    p->poc.prev_poc_lsb =
-                        p->picture_structure == PICT_BOTTOM_FIELD ? 0 : field_poc[0];
-                }
-            }
-
-            if (p->sei.picture_timing.present) {
-                ret = ff_h264_sei_process_picture_timing(&p->sei.picture_timing,
-                                                         sps, avctx);
-                if (ret < 0) {
-                    av_log(avctx, AV_LOG_ERROR, "Error processing the picture timing SEI\n");
-                    p->sei.picture_timing.present = 0;
-                }
-            }
-
-            if (sps->pic_struct_present_flag && p->sei.picture_timing.present) {
-                switch (p->sei.picture_timing.pic_struct) {
-                case H264_SEI_PIC_STRUCT_TOP_FIELD:
-                case H264_SEI_PIC_STRUCT_BOTTOM_FIELD:
-                    s->repeat_pict = 0;
-                    break;
-                case H264_SEI_PIC_STRUCT_FRAME:
-                case H264_SEI_PIC_STRUCT_TOP_BOTTOM:
-                case H264_SEI_PIC_STRUCT_BOTTOM_TOP:
-                    s->repeat_pict = 1;
-                    break;
-                case H264_SEI_PIC_STRUCT_TOP_BOTTOM_TOP:
-                case H264_SEI_PIC_STRUCT_BOTTOM_TOP_BOTTOM:
-                    s->repeat_pict = 2;
-                    break;
-                case H264_SEI_PIC_STRUCT_FRAME_DOUBLING:
-                    s->repeat_pict = 3;
-                    break;
-                case H264_SEI_PIC_STRUCT_FRAME_TRIPLING:
-                    s->repeat_pict = 5;
-                    break;
-                default:
-                    s->repeat_pict = p->picture_structure == PICT_FRAME ? 1 : 0;
-                    break;
-                }
-            } else {
-                s->repeat_pict = p->picture_structure == PICT_FRAME ? 1 : 0;
-            }
-
-            if (p->picture_structure == PICT_FRAME) {
-                s->picture_structure = AV_PICTURE_STRUCTURE_FRAME;
-                if (sps->pic_struct_present_flag && p->sei.picture_timing.present) {
-                    switch (p->sei.picture_timing.pic_struct) {
-                    case H264_SEI_PIC_STRUCT_TOP_BOTTOM:
-                    case H264_SEI_PIC_STRUCT_TOP_BOTTOM_TOP:
-                        s->field_order = AV_FIELD_TT;
-                        break;
-                    case H264_SEI_PIC_STRUCT_BOTTOM_TOP:
-                    case H264_SEI_PIC_STRUCT_BOTTOM_TOP_BOTTOM:
-                        s->field_order = AV_FIELD_BB;
-                        break;
-                    default:
-                        s->field_order = AV_FIELD_PROGRESSIVE;
-                        break;
-                    }
-                } else {
-                    if (field_poc[0] < field_poc[1])
-                        s->field_order = AV_FIELD_TT;
-                    else if (field_poc[0] > field_poc[1])
-                        s->field_order = AV_FIELD_BB;
-                    else
-                        s->field_order = AV_FIELD_PROGRESSIVE;
-                }
-            } else {
-                if (p->picture_structure == PICT_TOP_FIELD)
-                    s->picture_structure = AV_PICTURE_STRUCTURE_TOP_FIELD;
-                else
-                    s->picture_structure = AV_PICTURE_STRUCTURE_BOTTOM_FIELD;
-                if (p->poc.frame_num == p->last_frame_num &&
-                    p->last_picture_structure != AV_PICTURE_STRUCTURE_UNKNOWN &&
-                    p->last_picture_structure != AV_PICTURE_STRUCTURE_FRAME &&
-                    p->last_picture_structure != s->picture_structure) {
-                    if (p->last_picture_structure == AV_PICTURE_STRUCTURE_TOP_FIELD)
-                        s->field_order = AV_FIELD_TT;
-                    else
-                        s->field_order = AV_FIELD_BB;
-                } else {
-                    s->field_order = AV_FIELD_UNKNOWN;
-                }
-                p->last_picture_structure = s->picture_structure;
-                p->last_frame_num = p->poc.frame_num;
-            }
-            if (sps->timing_info_present_flag) {
-                int64_t den = sps->time_scale;
-                if (p->sei.common.unregistered.x264_build < 44U)
-                    den *= 2;
-                av_reduce(&avctx->framerate.den, &avctx->framerate.num,
-                          sps->num_units_in_tick * 2, den, 1 << 30);
-            }
-
-            av_freep(&rbsp.rbsp_buffer);
-            return 0; /* no need to evaluate the rest */
+            break;
         }
         nal_index++;
     }
