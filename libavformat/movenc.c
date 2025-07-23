@@ -6859,8 +6859,8 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
                 return ret;
             avio_write(pb, reformatted_data, size);
         } else {
-            if (trk->cenc.aes_ctr) {
-                size = ff_mov_cenc_avc_parse_nal_units(&trk->cenc, pb, pkt->data, size);
+            if (trk->cenc.encryption_scheme != MOV_ENC_NONE) {
+                size = ff_mov_cenc_avc_parse_nal_units(s, &trk->cenc, pb, pkt);
                 if (size < 0) {
                     ret = size;
                     goto err;

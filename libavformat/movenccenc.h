@@ -64,8 +64,8 @@ typedef struct {
     CodedBitstreamContext *cbc;
     CodedBitstreamFragment temporal_unit;
 
-    AVCodecParserContext *parser;
-    AVCodecContext *parser_avctx;
+    struct AVCodecParserContext *parser;
+    struct AVCodecContext *parser_avctx;
 } MOVMuxCencContext;
 
 /**
