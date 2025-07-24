@@ -6928,9 +6928,9 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
     } else {
         if (trk->cenc.encryption_scheme != MOV_ENC_NONE) {
             if (par->codec_id == AV_CODEC_ID_H264 && par->extradata_size > 4) {
-                ret = ff_mov_cenc_avc_write_nal_units(s, &trk->cenc, pb, pkt);
+                ret = ff_mov_cenc_h2645_write_nal_units(s, &trk->cenc, pb, pkt);
             } else if(par->codec_id == AV_CODEC_ID_HEVC && par->extradata_size > 21) {
-                ret = ff_mov_cenc_avc_write_nal_units(s, &trk->cenc, pb, pkt);
+                ret = ff_mov_cenc_h2645_write_nal_units(s, &trk->cenc, pb, pkt);
             } else if(par->codec_id == AV_CODEC_ID_VVC) {
                 ret = AVERROR_PATCHWELCOME;
             } else if(par->codec_id == AV_CODEC_ID_AV1) {
@@ -8070,25 +8070,28 @@ static int mov_init(AVFormatContext *s)
     if (mov->encryption_scheme_str != NULL && strcmp(mov->encryption_scheme_str, "none") != 0) {
         if (strcmp(mov->encryption_scheme_str, "cenc-aes-ctr") == 0) {
             mov->encryption_scheme = MOV_ENC_CENC_AES_CTR;
+
             if (mov->encryption_key_len != AES_CTR_KEY_SIZE) {
-                av_log(s, AV_LOG_ERROR, "Invalid encryption key len %d; expected %d\n",
+                av_log(s, AV_LOG_ERROR, "Invalid encryption key len %d expected %d\n",
                     mov->encryption_key_len, AES_CTR_KEY_SIZE);
                 return AVERROR(EINVAL);
             }
         } else if (strcmp(mov->encryption_scheme_str, "cenc-aes-cbc-pattern") == 0) {
             mov->encryption_scheme = MOV_ENC_CENC_AES_CBC_PATTERN;
+
             if (mov->encryption_key_len != 16) { // 9.4.3 of the ISO CENC spec
-                av_log(s, AV_LOG_ERROR, "Invalid encryption key len %d; expected 16\n",
+                av_log(s, AV_LOG_ERROR, "Invalid encryption key len %d expected 16\n",
                     mov->encryption_key_len);
                 return AVERROR(EINVAL);
             }
         } else {
-            av_log(s, AV_LOG_ERROR, "Unsupported encryption scheme %s\n",
+            av_log(s, AV_LOG_ERROR, "unsupported encryption scheme %s\n",
                 mov->encryption_scheme_str);
             return AVERROR(EINVAL);
         }
+
         if (mov->encryption_kid_len != CENC_KID_SIZE) {
-            av_log(s, AV_LOG_ERROR, "Invalid encryption kid len %d; expected %d\n",
+            av_log(s, AV_LOG_ERROR, "Invalid encryption kid len %d expected %d\n",
                 mov->encryption_kid_len, CENC_KID_SIZE);
             return AVERROR(EINVAL);
         }

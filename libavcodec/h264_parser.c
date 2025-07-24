@@ -605,9 +605,9 @@ static inline int parse_nal_units(AVCodecParserContext *s,
     unsigned int pps_id;
     unsigned int slice_type;
     int state = -1;
+    int q264 = buf_size >=4 && !memcmp("Q264", buf, 4);
     int ret;
     int nal_index = 0;
-    int q264 = buf_size >=4 && !memcmp("Q264", buf, 4);
     int picture_found = 0;
 
     memset(p->nals, 0, sizeof(p->nals));
@@ -649,8 +649,8 @@ static inline int parse_nal_units(AVCodecParserContext *s,
         src_length = next_avc - buf_index;
         state = buf[buf_index];
 
-        if ((unsigned int)nal_index >= sizeof(p->nals)) {
-            av_log(avctx, AV_LOG_WARNING, "reached NAL parse limit: %lu\n", sizeof(p->nals));
+        if ((unsigned int)nal_index >= MAX_SLICES) {
+            av_log(avctx, AV_LOG_WARNING, "reached NAL parse limit: %d\n", MAX_SLICES);
             goto fail;
         }
         nal = &p->nals[nal_index];
