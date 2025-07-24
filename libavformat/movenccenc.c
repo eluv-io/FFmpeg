@@ -243,7 +243,7 @@ int ff_mov_cenc_write_packet(MOVMuxCencContext* ctx, AVIOContext *pb,
     return 0;
 }
 
-// TODO refactor with ff_mov_cenc_avc_write_nal_units
+// TODO refactor with ff_mov_cenc_h2645_write_nal_units
 int ff_mov_cenc_avc_parse_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
                                     AVIOContext *pb, AVPacket *pkt)
 {
@@ -258,6 +258,7 @@ int ff_mov_cenc_avc_parse_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
     uint8_t *parsed_buf_out;
     int parsed_buf_out_size;
     int header_bits;
+    H2645NAL *nals;
 
     ret = mov_cenc_start_packet(ctx);
     if (ret) {
@@ -266,7 +267,7 @@ int ff_mov_cenc_avc_parse_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
 
     av_parser_parse2(ctx->parser, ctx->parser_avctx, &parsed_buf_out,
         &parsed_buf_out_size, pkt->data, pkt->size, pkt->pts, pkt->dts, pkt->pos);
-    H2645NAL* nals = (H2645NAL*) avpriv_h264_extract_nals(ctx->parser);
+    nals = (H2645NAL*) avpriv_h264_extract_nals(ctx->parser);
 
     nal_start = ff_nal_find_startcode(start, end);
     for (;;) {
@@ -319,29 +320,34 @@ int ff_mov_cenc_avc_parse_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
 }
 
 // TODO combine with ff_mov_cenc_avc_parse_nal_units
-int ff_mov_cenc_avc_write_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
-                                    AVIOContext *pb, AVPacket *pkt)
+int ff_mov_cenc_h2645_write_nal_units(AVFormatContext *s, MOVMuxCencContext *ctx,
+                                      AVIOContext *pb, AVPacket *pkt)
 {
-    int encsize, j, nalsize, naltype, ret, slice_header_len;
+    int encsize, j, nalsize, naltype, ret, slice_header_len, header_bits;
     int clear_bytes = 0;
     int encrypted_bytes = 0;
     int nal_index = 0;
     int size = 0;
     const uint8_t *buf_in = pkt->data;
     int remaining = pkt->size;
+    uint8_t *parsed_buf_out;
+    int parsed_buf_out_size;
+    H2645NAL* nals;
     AVCodecParameters *par = s->streams[pkt->stream_index]->codecpar;
-    const int nal_length_size = (par->extradata[4] & 0x3) + 1;
+    int nal_length_size = (par->extradata[4] & 0x3) + 1;
+
+    if (par->codec_id == AV_CODEC_ID_HEVC) {
+        nal_length_size = (par->extradata[21] & 0x3) + 1;
+    }
 
     ret = mov_cenc_start_packet(ctx);
     if (ret) {
         return ret;
     }
 
-    uint8_t *parsed_buf_out;
-    int parsed_buf_out_size;
     av_parser_parse2(ctx->parser, ctx->parser_avctx, &parsed_buf_out,
         &parsed_buf_out_size, pkt->data, pkt->size, pkt->pts, pkt->dts, pkt->pos);
-    H2645NAL* nals = (H2645NAL*)avpriv_h264_extract_nals(ctx->parser);
+    nals = (H2645NAL*)avpriv_h264_extract_nals(ctx->parser);
 
     // TODO maybe use parsed info above to not parse again below
     while (remaining > 0) {
@@ -370,7 +376,7 @@ int ff_mov_cenc_avc_write_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
          * MPEG-2 HLS encryption and CENC specs.
          */
         naltype = *buf_in & 0x1f;
-        int header_bits = nals[nal_index].slice_header_len_bits;
+        header_bits = nals[nal_index].slice_header_len_bits;
         slice_header_len = (header_bits + 7) / 8;
         if ((naltype == 1 || naltype == 5) &&
              nalsize >= slice_header_len + AES_BLOCK_SIZE)
@@ -574,7 +580,6 @@ static int mov_cenc_cbc_init(MOVMuxCencContext* ctx, uint8_t* key,
                              uint8_t* iv, int iv_len)
 {
     int ret;
-    uint32_t* iv_part;
 
     av_assert0(ctx->aes_cbc == NULL);
 
@@ -596,11 +601,10 @@ static int mov_cenc_cbc_init(MOVMuxCencContext* ctx, uint8_t* key,
     if (iv_len == AES_BLOCK_SIZE) {
         memcpy(ctx->aes_cbc_iv, iv, iv_len);
     } else {
-        iv_part = (uint32_t*)ctx->aes_cbc_iv;
-        iv_part[0] = av_get_random_seed();
-        iv_part[1] = av_get_random_seed();
-        iv_part[2] = av_get_random_seed();
-        iv_part[3] = av_get_random_seed();
+        AV_WL32(ctx->aes_cbc_iv, av_get_random_seed());
+        AV_WL32(ctx->aes_cbc_iv + 4, av_get_random_seed());
+        AV_WL32(ctx->aes_cbc_iv + 8, av_get_random_seed());
+        AV_WL32(ctx->aes_cbc_iv + 12, av_get_random_seed());
     }
 
     return 0;

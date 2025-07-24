@@ -88,8 +88,8 @@ int ff_mov_cenc_avc_parse_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
  *
  * Returns bytes written, or < 0 on error
  */
-int ff_mov_cenc_avc_write_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
-                                    AVIOContext *pb, AVPacket *pkt);
+int ff_mov_cenc_h2645_write_nal_units(AVFormatContext *s, MOVMuxCencContext *ctx,
+                                      AVIOContext *pb, AVPacket *pkt);
 
 /**
  * Write the cenc atoms that should reside inside senc
