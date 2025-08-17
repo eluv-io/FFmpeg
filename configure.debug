@@ -56,10 +56,6 @@ fi
 
 test -d /usr/xpg4/bin && PATH=/usr/xpg4/bin:$PATH
 
-# Add debug-specific options automatically
-echo "Debug build configuration - adding debug flags"
-set -- "$@" --disable-optimizations --enable-debug=3 --disable-stripping
-
 show_help(){
     cat <<EOF
 Usage: configure [options]
