@@ -1914,6 +1914,18 @@ typedef struct AVFormatContext {
      * @see skip_estimate_duration_from_pts
      */
     int64_t duration_probesize;
+
+    /* Special for avpipe, holds out_handler */
+    void *avpipe_opaque;
+    
+    /*
+     * Keep track of min and max of frame duration and calculate the following:
+     * frame_duration_variation = (max_frame_duration - min_frame_duration) * 2;
+     * frame_duration_variation will be used to cut ABR dash/hls segments.
+     */
+    int64_t prev_pts;
+    int64_t min_frame_duration;
+    int64_t max_frame_duration;
 } AVFormatContext;
 
 /**
@@ -2929,16 +2941,20 @@ void av_dump_format(AVFormatContext *ic,
  *
  * Also handles the '%0nd' format where 'n' is the total number
  * of digits and '%%'.
+ * 
+ * ELUVIO MERGE NOTE: This was modified in order to adjust the number from int to int64_t. When
+ * upgrading to ffmpeg 7.2, this change will become unnecessary, and the commit can be discarded
+ * when merging/rebasing.
  *
  * @param buf destination buffer
  * @param buf_size destination buffer size
  * @param path numbered sequence string
- * @param number frame number
+ * @param number frame number or PTS
  * @param flags AV_FRAME_FILENAME_FLAGS_*
  * @return 0 if OK, -1 on format error
  */
 int av_get_frame_filename2(char *buf, int buf_size,
-                          const char *path, int number, int flags);
+                          const char *path, int64_t number, int flags);
 
 int av_get_frame_filename(char *buf, int buf_size,
                           const char *path, int number);

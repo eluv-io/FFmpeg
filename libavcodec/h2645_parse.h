@@ -69,6 +69,8 @@ typedef struct H2645NAL {
     int skipped_bytes;
     int skipped_bytes_pos_size;
     int *skipped_bytes_pos;
+
+    int slice_header_len_bits;
 } H2645NAL;
 
 typedef struct H2645RBSP {

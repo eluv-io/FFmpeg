@@ -338,7 +338,7 @@ fail:
     return -1;
 }
 
-int av_get_frame_filename2(char *buf, int buf_size, const char *path, int number, int flags)
+int av_get_frame_filename2(char *buf, int buf_size, const char *path, int64_t number, int flags)
 {
     return ff_get_frame_filename(buf, buf_size, path, number, flags);
 }
