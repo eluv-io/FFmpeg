@@ -3319,7 +3319,7 @@ static int mov_write_stbl_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContext
     mov_write_stsz_tag(pb, track);
     mov_write_stco_tag(pb, track);
     if (track->cenc.encryption_scheme != MOV_ENC_NONE && !(mov->flags & FF_MOV_FLAG_FRAGMENT)) {
-        ff_mov_cenc_write_stbl_atoms(&track->cenc, pb);
+        ff_mov_cenc_write_stbl_atoms(&track->cenc, pb, 0);
     }
     if (track->par->codec_id == AV_CODEC_ID_OPUS || track->par->codec_id == AV_CODEC_ID_AAC) {
         mov_preroll_write_stbl_atoms(pb, track);
@@ -5652,7 +5652,7 @@ static int mov_write_traf_tag(AVIOContext *pb, MOVMuxContext *mov,
 
     if (track->cenc.encryption_scheme != MOV_ENC_NONE) {
         ff_mov_cenc_write_senc_tag(&track->cenc, pb, moof_offset);
-        ff_mov_cenc_write_stbl_atoms(&track->cenc, pb);
+        ff_mov_cenc_write_stbl_atoms(&track->cenc, pb, moof_offset);
     }
 
     return update_size(pb, pos);
