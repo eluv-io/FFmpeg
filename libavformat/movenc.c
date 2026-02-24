@@ -5675,7 +5675,7 @@ static int mov_write_moof_tag_internal(AVIOContext *pb, MOVMuxContext *mov,
             continue;
         if (!track->entry)
             continue;
-        if (track->cenc.aes_ctr && (mov->flags & FF_MOV_FLAG_FRAGMENT))
+        if (track->cenc.encryption_scheme != MOV_ENC_NONE && (mov->flags & FF_MOV_FLAG_FRAGMENT))
             mov_write_pssh_tag(pb, track->st);
         mov_write_traf_tag(pb, mov, track, pos, moof_size);
     }
@@ -6881,7 +6881,7 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
         } else {
             size = ff_vvc_annexb2mp4(pb, pkt->data, pkt->size, 0, NULL);
         }
-    } else if (par->codec_id == AV_CODEC_ID_AV1 && !trk->cenc.aes_ctr) {
+    } else if (par->codec_id == AV_CODEC_ID_AV1 && trk->cenc.encryption_scheme == MOV_ENC_NONE) {
         if (trk->hint_track >= 0 && trk->hint_track < mov->nb_tracks) {
             ret = ff_av1_filter_obus_buf(pkt->data, &reformatted_data,
                                          &size, &offset);
