@@ -262,15 +262,17 @@ int ff_mov_cenc_avc_parse_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
     int parsed_buf_out_size;
     int header_bits;
     H2645NAL *nals;
+    int nals_valid;
 
     ret = mov_cenc_start_packet(ctx);
     if (ret) {
         return ret;
     }
 
-    av_parser_parse2(ctx->parser, ctx->parser_avctx, &parsed_buf_out,
-        &parsed_buf_out_size, pkt->data, pkt->size, pkt->pts, pkt->dts, pkt->pos);
-    nals = (H2645NAL*) avpriv_h264_extract_nals(ctx->parser);
+    nals_valid = ctx->parser &&
+        av_parser_parse2(ctx->parser, ctx->parser_avctx, &parsed_buf_out,
+            &parsed_buf_out_size, pkt->data, pkt->size, pkt->pts, pkt->dts, pkt->pos) >= 0;
+    nals = nals_valid ? (H2645NAL*) avpriv_h264_extract_nals(ctx->parser) : NULL;
 
     nal_start = ff_nal_find_startcode(start, end);
     for (;;) {
@@ -289,7 +291,7 @@ int ff_mov_cenc_avc_parse_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
         clear_bytes += 4;
 
         naltype = *nal_start & 0x1f;
-        header_bits = nals[nal_index].slice_header_len_bits;
+        header_bits = (nals && nal_index < 32 /* MAX_SLICES */) ? nals[nal_index].slice_header_len_bits : 0;
         slice_header_len = (header_bits + 7) / 8;
         if ((naltype == 1 || naltype == 5) &&
              nalsize >= slice_header_len + AES_BLOCK_SIZE)
@@ -336,6 +338,7 @@ int ff_mov_cenc_h2645_write_nal_units(AVFormatContext *s, MOVMuxCencContext *ctx
     uint8_t *parsed_buf_out;
     int parsed_buf_out_size;
     H2645NAL* nals;
+    int nals_valid;
     AVCodecParameters *par = s->streams[pkt->stream_index]->codecpar;
     int nal_length_size = (par->extradata[4] & 0x3) + 1;
 
@@ -348,9 +351,10 @@ int ff_mov_cenc_h2645_write_nal_units(AVFormatContext *s, MOVMuxCencContext *ctx
         return ret;
     }
 
-    av_parser_parse2(ctx->parser, ctx->parser_avctx, &parsed_buf_out,
-        &parsed_buf_out_size, pkt->data, pkt->size, pkt->pts, pkt->dts, pkt->pos);
-    nals = (H2645NAL*)avpriv_h264_extract_nals(ctx->parser);
+    nals_valid = ctx->parser &&
+        av_parser_parse2(ctx->parser, ctx->parser_avctx, &parsed_buf_out,
+            &parsed_buf_out_size, pkt->data, pkt->size, pkt->pts, pkt->dts, pkt->pos) >= 0;
+    nals = nals_valid ? (H2645NAL*)avpriv_h264_extract_nals(ctx->parser) : NULL;
 
     // TODO maybe use parsed info above to not parse again below
     while (remaining > 0) {
@@ -379,7 +383,7 @@ int ff_mov_cenc_h2645_write_nal_units(AVFormatContext *s, MOVMuxCencContext *ctx
          * MPEG-2 HLS encryption and CENC specs.
          */
         naltype = *buf_in & 0x1f;
-        header_bits = nals[nal_index].slice_header_len_bits;
+        header_bits = (nals && nal_index < 32 /* MAX_SLICES */) ? nals[nal_index].slice_header_len_bits : 0;
         slice_header_len = (header_bits + 7) / 8;
         if ((naltype == 1 || naltype == 5) &&
              nalsize >= slice_header_len + AES_BLOCK_SIZE)
@@ -403,7 +407,7 @@ int ff_mov_cenc_h2645_write_nal_units(AVFormatContext *s, MOVMuxCencContext *ctx
             }
         }
         remaining -= nalsize;
-        size += 4 + nalsize;
+        size += nal_length_size + nalsize;
         buf_in += nalsize;
         nal_index++;
     }
@@ -830,14 +834,16 @@ int ff_mov_cenc_init(MOVMuxCencContext* ctx, AVCodecParameters *par,
     ctx->use_subsamples = use_subsamples;
 
     ctx->parser = av_parser_init(par->codec_id);
-    ctx->parser_avctx = avcodec_alloc_context3(NULL);
-    if (!ctx->parser_avctx)
-        return AVERROR(ENOMEM);
-    ret = avcodec_parameters_to_context(ctx->parser_avctx, par);
-    if (ret < 0)
-        return ret;
-    // We only want to parse frame headers
-    ctx->parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
+    if (ctx->parser) {
+        ctx->parser_avctx = avcodec_alloc_context3(NULL);
+        if (!ctx->parser_avctx)
+            return AVERROR(ENOMEM);
+        ret = avcodec_parameters_to_context(ctx->parser_avctx, par);
+        if (ret < 0)
+            return ret;
+        // We only want to parse frame headers
+        ctx->parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
+    }
 
     if (codec_id == AV_CODEC_ID_AV1) {
         ret = ff_lavf_cbs_init(&ctx->cbc, codec_id, NULL);
@@ -851,9 +857,9 @@ int ff_mov_cenc_init(MOVMuxCencContext* ctx, AVCodecParameters *par,
     switch (encryption_scheme) {
     case MOV_ENC_CENC_AES_CTR:
         return mov_cenc_ctr_init(ctx, key, bitexact);
-        break;
     case MOV_ENC_CENC_AES_CBC_PATTERN:
         return mov_cenc_cbc_init(ctx, key, iv, iv_len);
+    default:
         break;
     }
     return 0;
