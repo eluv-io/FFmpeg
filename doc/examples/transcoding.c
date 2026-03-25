@@ -32,8 +32,25 @@
 #include <libavformat/avformat.h>
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
+
+#include <inttypes.h>
+#include <stdio.h>
+#include <string.h>
+
+#ifdef USE_UF_RENDERLIB
+#include <libswscale/swscale.h>
+
+typedef struct UfContext UfContext;
+typedef struct UfImage UfImage;
+typedef struct UfMetadata UfMetadata;
+typedef struct UfFeeds UfFeeds;
+typedef enum UfImageFormat UfImageFormat;
+#include <uf/renderlib/UfRenderInterface.h>
+#endif
 
 static AVFormatContext *ifmt_ctx;
 static AVFormatContext *ofmt_ctx;
@@ -49,6 +66,384 @@ typedef struct StreamContext {
     AVCodecContext *enc_ctx;
 } StreamContext;
 static StreamContext *stream_ctx;
+
+static int filter_encode_write_frame(AVFrame *frame, unsigned int stream_index);
+
+#if LIBAVUTIL_VERSION_MAJOR >= 57
+static int ensure_channel_layout(AVCodecContext *ctx)
+{
+    int nb_channels = ctx->ch_layout.nb_channels;
+
+    if (ctx->ch_layout.nb_channels && ctx->ch_layout.order != AV_CHANNEL_ORDER_UNSPEC)
+        return 0;
+
+    av_channel_layout_uninit(&ctx->ch_layout);
+    av_channel_layout_default(&ctx->ch_layout, nb_channels > 0 ? nb_channels : 2);
+    return 0;
+}
+
+static int describe_channel_layout(const AVCodecContext *ctx, char *buffer, size_t buffer_size)
+{
+    return av_channel_layout_describe(&ctx->ch_layout, buffer, buffer_size);
+}
+
+static int set_encoder_channel_layout(AVCodecContext *enc_ctx, const AVCodecContext *dec_ctx,
+                                      const AVCodec *encoder)
+{
+    int channels = dec_ctx->ch_layout.nb_channels > 0 ? dec_ctx->ch_layout.nb_channels : 2;
+
+    av_channel_layout_uninit(&enc_ctx->ch_layout);
+
+    if (encoder->ch_layouts) {
+        const AVChannelLayout *layout = encoder->ch_layouts;
+        const AVChannelLayout *fallback = layout;
+
+        for (; layout->nb_channels; layout++) {
+            if (layout->nb_channels == channels)
+                return av_channel_layout_copy(&enc_ctx->ch_layout, layout);
+        }
+
+        return av_channel_layout_copy(&enc_ctx->ch_layout, fallback);
+    }
+
+    if (dec_ctx->ch_layout.nb_channels && dec_ctx->ch_layout.order != AV_CHANNEL_ORDER_UNSPEC)
+        return av_channel_layout_copy(&enc_ctx->ch_layout, &dec_ctx->ch_layout);
+
+    av_channel_layout_default(&enc_ctx->ch_layout, channels);
+    return 0;
+}
+
+#else
+static int ensure_channel_layout(AVCodecContext *ctx)
+{
+    if (!ctx->channel_layout)
+        ctx->channel_layout = av_get_default_channel_layout(ctx->channels > 0 ? ctx->channels : 2);
+    return 0;
+}
+
+static int describe_channel_layout(const AVCodecContext *ctx, char *buffer, size_t buffer_size)
+{
+    av_get_channel_layout_string(buffer, buffer_size, ctx->channels, ctx->channel_layout);
+    return 0;
+}
+
+static int set_encoder_channel_layout(AVCodecContext *enc_ctx, const AVCodecContext *dec_ctx,
+                                      const AVCodec *encoder)
+{
+    int channels;
+    uint64_t channel_layout = dec_ctx->channel_layout;
+
+    channels = dec_ctx->channels > 0 ? dec_ctx->channels : 2;
+    if (!channel_layout)
+        channel_layout = av_get_default_channel_layout(channels);
+
+    if (encoder->channel_layouts) {
+        const uint64_t *layout = encoder->channel_layouts;
+        uint64_t fallback = *layout;
+
+        for (; *layout; layout++) {
+            if (av_get_channel_layout_nb_channels(*layout) == channels) {
+                channel_layout = *layout;
+                break;
+            }
+        }
+
+        if (!*layout)
+            channel_layout = fallback;
+    }
+
+    enc_ctx->channel_layout = channel_layout;
+    enc_ctx->channels = av_get_channel_layout_nb_channels(channel_layout);
+    return 0;
+}
+
+#endif
+
+#ifdef USE_UF_RENDERLIB
+typedef struct RenderLibContext {
+    UfContext *ctx;
+    const char *metadata_dir;
+    uint64_t *video_frame_count;
+} RenderLibContext;
+
+static RenderLibContext renderlib_ctx;
+
+static UfImage *create_render_image_from_frame(const AVFrame *frame)
+{
+    struct SwsContext *scale_ctx;
+    UfImage *image;
+    uint8_t *dst_data;
+    uint32_t dst_stride;
+    int ret;
+
+    image = uFCreateImage(frame->width, frame->height, R8G8B8_UINT);
+    if (!image)
+        return NULL;
+
+    ret = uFGetImageHostBuffer(image, (void **)&dst_data);
+    if (ret != 0 || !dst_data) {
+        uFDestroyImage(image);
+        return NULL;
+    }
+
+    ret = uFGetImageStride(image, &dst_stride);
+    if (ret != 0) {
+        uFDestroyImage(image);
+        return NULL;
+    }
+
+    scale_ctx = sws_getContext(frame->width, frame->height, frame->format,
+                               frame->width, frame->height, AV_PIX_FMT_RGB24,
+                               SWS_BILINEAR, NULL, NULL, NULL);
+    if (!scale_ctx) {
+        uFDestroyImage(image);
+        return NULL;
+    }
+
+    {
+        uint8_t *rgb_data[4] = { dst_data, NULL, NULL, NULL };
+        int rgb_linesize[4] = { (int)dst_stride, 0, 0, 0 };
+
+        sws_scale(scale_ctx, (const uint8_t * const *)frame->data, frame->linesize,
+                  0, frame->height, rgb_data, rgb_linesize);
+    }
+
+    sws_freeContext(scale_ctx);
+    return image;
+}
+
+static UfMetadata *load_render_metadata(const char *metadata_dir, uint64_t frame_index)
+{
+    FILE *file;
+    UfMetadata *metadata;
+    long metadata_size;
+    char *filename;
+    uint8_t *buffer = NULL;
+    int filename_len;
+
+    filename_len = snprintf(NULL, 0, "%s/md-%06" PRIu64 ".bin",
+                            metadata_dir, frame_index);
+    if (filename_len < 0)
+        return uFCreateMetadata(NULL, 0);
+
+    filename = av_malloc(filename_len + 1);
+    if (!filename)
+        return NULL;
+
+    snprintf(filename, filename_len + 1, "%s/md-%06" PRIu64 ".bin",
+             metadata_dir, frame_index);
+
+    file = fopen(filename, "rb");
+    if (!file) {
+        av_free(filename);
+        return uFCreateMetadata(NULL, 0);
+    }
+
+    if (fseek(file, 0, SEEK_END) < 0) {
+        fclose(file);
+        av_free(filename);
+        return uFCreateMetadata(NULL, 0);
+    }
+
+    metadata_size = ftell(file);
+    if (metadata_size <= 0 || fseek(file, 0, SEEK_SET) < 0) {
+        fclose(file);
+        av_free(filename);
+        return uFCreateMetadata(NULL, 0);
+    }
+
+    buffer = av_malloc(metadata_size);
+    if (!buffer) {
+        fclose(file);
+        av_free(filename);
+        return NULL;
+    }
+
+    if (fread(buffer, 1, metadata_size, file) != (size_t)metadata_size) {
+        av_free(buffer);
+        fclose(file);
+        av_free(filename);
+        return uFCreateMetadata(NULL, 0);
+    }
+
+    fclose(file);
+    av_free(filename);
+    metadata = uFCreateMetadata(buffer, metadata_size);
+    av_free(buffer);
+    return metadata;
+}
+
+static int create_frame_from_render_image(const UfImage *image, const AVFrame *source_frame,
+                                          AVFrame **processed_frame)
+{
+    struct SwsContext *scale_ctx;
+    UfImage *rgb_image = NULL;
+    AVFrame *frame;
+    uint8_t *rgb_data;
+    uint32_t width;
+    uint32_t height;
+    uint32_t stride;
+    UfImageFormat format;
+    int ret;
+
+    ret = uFGetImageFormat(image, &format);
+    if (ret != 0)
+        return AVERROR_EXTERNAL;
+
+    if (format != R8G8B8_UINT) {
+        rgb_image = uFConvertImage(image, R8G8B8_UINT);
+        if (!rgb_image)
+            return AVERROR_EXTERNAL;
+        image = rgb_image;
+    }
+
+    if (uFGetImageSize(image, &width, &height) != 0 ||
+        uFGetImageHostBuffer(image, (void **)&rgb_data) != 0 ||
+        uFGetImageStride(image, &stride) != 0 || !rgb_data)
+        return AVERROR_EXTERNAL;
+
+    if ((int)width != source_frame->width || (int)height != source_frame->height) {
+        ret = AVERROR(EINVAL);
+        goto end;
+    }
+
+    frame = av_frame_alloc();
+    if (!frame)
+        return AVERROR(ENOMEM);
+
+    frame->format = source_frame->format;
+    frame->width = source_frame->width;
+    frame->height = source_frame->height;
+
+    ret = av_frame_get_buffer(frame, 32);
+    if (ret < 0) {
+        av_frame_free(&frame);
+        return ret;
+    }
+
+    scale_ctx = sws_getContext(source_frame->width, source_frame->height, AV_PIX_FMT_RGB24,
+                               source_frame->width, source_frame->height, source_frame->format,
+                               SWS_BILINEAR, NULL, NULL, NULL);
+    if (!scale_ctx) {
+        av_frame_free(&frame);
+        ret = AVERROR(EINVAL);
+        goto end;
+    }
+
+    {
+        const uint8_t *src_data[4] = { rgb_data, NULL, NULL, NULL };
+        int src_linesize[4] = { (int)stride, 0, 0, 0 };
+
+        sws_scale(scale_ctx, src_data, src_linesize, 0, source_frame->height,
+                  frame->data, frame->linesize);
+    }
+
+    sws_freeContext(scale_ctx);
+
+    ret = av_frame_copy_props(frame, source_frame);
+    if (ret < 0) {
+        av_frame_free(&frame);
+        goto end;
+    }
+
+    frame->pts = source_frame->pts;
+    frame->best_effort_timestamp = source_frame->best_effort_timestamp;
+    *processed_frame = frame;
+    ret = 0;
+
+end:
+    if (rgb_image)
+        uFDestroyImage(rgb_image);
+    return ret;
+}
+
+static int process_video_frame_with_renderlib(AVFrame *frame, unsigned int stream_index,
+                                              AVFrame **processed_frame)
+{
+    const UfImage *feed_image;
+    UfFeeds *feeds = NULL;
+    UfImage *input_image = NULL;
+    UfMetadata *metadata = NULL;
+    int ret;
+    uint64_t frame_index;
+    int64_t render_tid;
+
+    *processed_frame = NULL;
+    frame_index = renderlib_ctx.video_frame_count[stream_index]++;
+    render_tid = frame->pts == AV_NOPTS_VALUE ? (int64_t)frame_index : frame->pts;
+
+    input_image = create_render_image_from_frame(frame);
+    if (!input_image) {
+        ret = AVERROR_EXTERNAL;
+        goto end;
+    }
+
+    metadata = load_render_metadata(renderlib_ctx.metadata_dir, frame_index);
+    if (!metadata) {
+        ret = AVERROR(ENOMEM);
+        goto end;
+    }
+
+    feeds = uFRenderFeeds(renderlib_ctx.ctx, metadata, render_tid, input_image);
+    if (!feeds) {
+        ret = 0;
+        goto end;
+    }
+
+    feed_image = uFGetFeedsImage(feeds, 0);
+    if (!feed_image) {
+        ret = AVERROR_EXTERNAL;
+        goto end;
+    }
+
+    ret = create_frame_from_render_image(feed_image, frame, processed_frame);
+
+end:
+    if (feeds)
+        uFDestroyFeeds(feeds);
+    if (metadata)
+        uFDestroyMetadata(metadata);
+    if (input_image)
+        uFDestroyImage(input_image);
+    return ret;
+}
+
+static int init_renderlib(int argc, char **argv)
+{
+    if (argc < 5) {
+        av_log(NULL, AV_LOG_ERROR,
+               "Usage: %s <input file> <output file> <project path> <metadata dir>\n",
+               argv[0]);
+        return AVERROR(EINVAL);
+    }
+
+    renderlib_ctx.ctx = uFCreateContext(argv[3]);
+    if (!renderlib_ctx.ctx) {
+        av_log(NULL, AV_LOG_ERROR, "Failed to initialize uniqFEED render context\n");
+        return AVERROR_EXTERNAL;
+    }
+
+    renderlib_ctx.metadata_dir = argv[4];
+    renderlib_ctx.video_frame_count = av_mallocz_array(ifmt_ctx->nb_streams,
+                                                       sizeof(*renderlib_ctx.video_frame_count));
+    if (!renderlib_ctx.video_frame_count) {
+        uFDestroyContext(renderlib_ctx.ctx);
+        renderlib_ctx.ctx = NULL;
+        return AVERROR(ENOMEM);
+    }
+
+    return 0;
+}
+
+static void free_renderlib(void)
+{
+    av_freep(&renderlib_ctx.video_frame_count);
+    if (renderlib_ctx.ctx)
+        uFDestroyContext(renderlib_ctx.ctx);
+    renderlib_ctx.ctx = NULL;
+    renderlib_ctx.metadata_dir = NULL;
+}
+#endif
 
 static int open_input_file(const char *filename)
 {
@@ -165,8 +560,11 @@ static int open_output_file(const char *filename)
                 enc_ctx->time_base = av_inv_q(dec_ctx->framerate);
             } else {
                 enc_ctx->sample_rate = dec_ctx->sample_rate;
-                enc_ctx->channel_layout = dec_ctx->channel_layout;
-                enc_ctx->channels = av_get_channel_layout_nb_channels(enc_ctx->channel_layout);
+                ret = set_encoder_channel_layout(enc_ctx, dec_ctx, encoder);
+                if (ret < 0) {
+                    av_log(NULL, AV_LOG_ERROR, "Failed to set output channel layout for stream #%u\n", i);
+                    return ret;
+                }
                 /* take first format from list of supported formats */
                 enc_ctx->sample_fmt = encoder->sample_fmts[0];
                 enc_ctx->time_base = (AVRational){1, enc_ctx->sample_rate};
@@ -279,6 +677,14 @@ static int init_filter(FilteringContext* fctx, AVCodecContext *dec_ctx,
             goto end;
         }
     } else if (dec_ctx->codec_type == AVMEDIA_TYPE_AUDIO) {
+        char dec_channel_layout[128];
+#if LIBAVUTIL_VERSION_MAJOR >= 57
+        AVChannelLayout out_ch_layouts[2];
+#else
+        int64_t out_channel_layouts[2];
+#endif
+        int out_sample_rates[2];
+
         buffersrc = avfilter_get_by_name("abuffer");
         buffersink = avfilter_get_by_name("abuffersink");
         if (!buffersrc || !buffersink) {
@@ -287,14 +693,18 @@ static int init_filter(FilteringContext* fctx, AVCodecContext *dec_ctx,
             goto end;
         }
 
-        if (!dec_ctx->channel_layout)
-            dec_ctx->channel_layout =
-                av_get_default_channel_layout(dec_ctx->channels);
+        ret = ensure_channel_layout(dec_ctx);
+        if (ret < 0)
+            goto end;
+        ret = describe_channel_layout(dec_ctx, dec_channel_layout, sizeof(dec_channel_layout));
+        if (ret < 0)
+            goto end;
+
         snprintf(args, sizeof(args),
-                "time_base=%d/%d:sample_rate=%d:sample_fmt=%s:channel_layout=0x%"PRIx64,
+                "time_base=%d/%d:sample_rate=%d:sample_fmt=%s:channel_layout=%s",
                 dec_ctx->time_base.num, dec_ctx->time_base.den, dec_ctx->sample_rate,
                 av_get_sample_fmt_name(dec_ctx->sample_fmt),
-                dec_ctx->channel_layout);
+                dec_channel_layout);
         ret = avfilter_graph_create_filter(&buffersrc_ctx, buffersrc, "in",
                 args, NULL, filter_graph);
         if (ret < 0) {
@@ -317,21 +727,37 @@ static int init_filter(FilteringContext* fctx, AVCodecContext *dec_ctx,
             goto end;
         }
 
-        ret = av_opt_set_bin(buffersink_ctx, "channel_layouts",
-                (uint8_t*)&enc_ctx->channel_layout,
-                sizeof(enc_ctx->channel_layout), AV_OPT_SEARCH_CHILDREN);
+#if LIBAVUTIL_VERSION_MAJOR >= 57
+        memset(out_ch_layouts, 0, sizeof(out_ch_layouts));
+        ret = av_channel_layout_copy(&out_ch_layouts[0], &enc_ctx->ch_layout);
+        if (ret < 0)
+            goto end;
+
+        ret = av_opt_set_chlayout(buffersink_ctx, "ch_layouts",
+                &out_ch_layouts[0], AV_OPT_SEARCH_CHILDREN);
+#else
+        out_channel_layouts[0] = enc_ctx->channel_layout;
+        out_channel_layouts[1] = -1;
+        ret = av_opt_set_int_list(buffersink_ctx, "channel_layouts",
+                out_channel_layouts, -1, AV_OPT_SEARCH_CHILDREN);
+#endif
         if (ret < 0) {
             av_log(NULL, AV_LOG_ERROR, "Cannot set output channel layout\n");
             goto end;
         }
 
-        ret = av_opt_set_bin(buffersink_ctx, "sample_rates",
-                (uint8_t*)&enc_ctx->sample_rate, sizeof(enc_ctx->sample_rate),
-                AV_OPT_SEARCH_CHILDREN);
+        out_sample_rates[0] = enc_ctx->sample_rate;
+        out_sample_rates[1] = -1;
+        ret = av_opt_set_int_list(buffersink_ctx, "sample_rates",
+            out_sample_rates, -1, AV_OPT_SEARCH_CHILDREN);
         if (ret < 0) {
             av_log(NULL, AV_LOG_ERROR, "Cannot set output sample rate\n");
             goto end;
         }
+
+#if LIBAVUTIL_VERSION_MAJOR >= 57
+        av_channel_layout_uninit(&out_ch_layouts[0]);
+#endif
     } else {
         ret = AVERROR_UNKNOWN;
         goto end;
@@ -406,35 +832,81 @@ static int encode_write_frame(AVFrame *filt_frame, unsigned int stream_index, in
     int ret;
     int got_frame_local;
     AVPacket enc_pkt;
-    int (*enc_func)(AVCodecContext *, AVPacket *, const AVFrame *, int *) =
-        (ifmt_ctx->streams[stream_index]->codecpar->codec_type ==
-         AVMEDIA_TYPE_VIDEO) ? avcodec_encode_video2 : avcodec_encode_audio2;
 
     if (!got_frame)
         got_frame = &got_frame_local;
+    *got_frame = 0;
 
     av_log(NULL, AV_LOG_INFO, "Encoding frame\n");
-    /* encode filtered frame */
-    enc_pkt.data = NULL;
-    enc_pkt.size = 0;
-    av_init_packet(&enc_pkt);
-    ret = enc_func(stream_ctx[stream_index].enc_ctx, &enc_pkt,
-            filt_frame, got_frame);
+    ret = avcodec_send_frame(stream_ctx[stream_index].enc_ctx, filt_frame);
     av_frame_free(&filt_frame);
     if (ret < 0)
         return ret;
-    if (!(*got_frame))
-        return 0;
 
-    /* prepare packet for muxing */
-    enc_pkt.stream_index = stream_index;
-    av_packet_rescale_ts(&enc_pkt,
-                         stream_ctx[stream_index].enc_ctx->time_base,
-                         ofmt_ctx->streams[stream_index]->time_base);
+    while (1) {
+        enc_pkt.data = NULL;
+        enc_pkt.size = 0;
+        av_init_packet(&enc_pkt);
 
-    av_log(NULL, AV_LOG_DEBUG, "Muxing frame\n");
-    /* mux encoded frame */
-    ret = av_interleaved_write_frame(ofmt_ctx, &enc_pkt);
+        ret = avcodec_receive_packet(stream_ctx[stream_index].enc_ctx, &enc_pkt);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+            return 0;
+        if (ret < 0)
+            return ret;
+
+        *got_frame = 1;
+
+        /* prepare packet for muxing */
+        enc_pkt.stream_index = stream_index;
+        av_packet_rescale_ts(&enc_pkt,
+                             stream_ctx[stream_index].enc_ctx->time_base,
+                             ofmt_ctx->streams[stream_index]->time_base);
+
+        av_log(NULL, AV_LOG_DEBUG, "Muxing frame\n");
+        ret = av_interleaved_write_frame(ofmt_ctx, &enc_pkt);
+        av_packet_unref(&enc_pkt);
+        if (ret < 0)
+            return ret;
+    }
+
+    return ret;
+}
+
+static int decode_filter_encode_write_frame(AVPacket *packet, unsigned int stream_index)
+{
+    AVFrame *frame;
+    int ret;
+
+    frame = av_frame_alloc();
+    if (!frame)
+        return AVERROR(ENOMEM);
+
+    ret = avcodec_send_packet(stream_ctx[stream_index].dec_ctx, packet);
+    if (ret < 0) {
+        av_frame_free(&frame);
+        av_log(NULL, AV_LOG_ERROR, "Error submitting a packet for decoding\n");
+        return ret;
+    }
+
+    while (1) {
+        ret = avcodec_receive_frame(stream_ctx[stream_index].dec_ctx, frame);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            ret = 0;
+            break;
+        }
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Decoding failed\n");
+            break;
+        }
+
+        frame->pts = frame->best_effort_timestamp;
+        ret = filter_encode_write_frame(frame, stream_index);
+        av_frame_unref(frame);
+        if (ret < 0)
+            break;
+    }
+
+    av_frame_free(&frame);
     return ret;
 }
 
@@ -474,6 +946,22 @@ static int filter_encode_write_frame(AVFrame *frame, unsigned int stream_index)
         }
 
         filt_frame->pict_type = AV_PICTURE_TYPE_NONE;
+#ifdef USE_UF_RENDERLIB
+        if (ifmt_ctx->streams[stream_index]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            AVFrame *processed_frame = NULL;
+
+            ret = process_video_frame_with_renderlib(filt_frame, stream_index,
+                                                     &processed_frame);
+            if (ret < 0) {
+                av_frame_free(&filt_frame);
+                break;
+            }
+            if (processed_frame) {
+                av_frame_free(&filt_frame);
+                filt_frame = processed_frame;
+            }
+        }
+#endif
         ret = encode_write_frame(filt_frame, stream_index, NULL);
         if (ret < 0)
             break;
@@ -506,20 +994,32 @@ int main(int argc, char **argv)
 {
     int ret;
     AVPacket packet = { .data = NULL, .size = 0 };
-    AVFrame *frame = NULL;
-    enum AVMediaType type;
     unsigned int stream_index;
     unsigned int i;
-    int got_frame;
-    int (*dec_func)(AVCodecContext *, AVFrame *, int *, const AVPacket *);
 
-    if (argc != 3) {
+    if (
+#ifdef USE_UF_RENDERLIB
+    argc != 5
+#else
+        argc != 3
+#endif
+    ) {
+#ifdef USE_UF_RENDERLIB
+        av_log(NULL, AV_LOG_ERROR,
+           "Usage: %s <input file> <output file> <project path> <metadata dir>\n",
+               argv[0]);
+#else
         av_log(NULL, AV_LOG_ERROR, "Usage: %s <input file> <output file>\n", argv[0]);
+#endif
         return 1;
     }
 
     if ((ret = open_input_file(argv[1])) < 0)
         goto end;
+#ifdef USE_UF_RENDERLIB
+    if ((ret = init_renderlib(argc, argv)) < 0)
+        goto end;
+#endif
     if ((ret = open_output_file(argv[2])) < 0)
         goto end;
     if ((ret = init_filters()) < 0)
@@ -530,39 +1030,17 @@ int main(int argc, char **argv)
         if ((ret = av_read_frame(ifmt_ctx, &packet)) < 0)
             break;
         stream_index = packet.stream_index;
-        type = ifmt_ctx->streams[packet.stream_index]->codecpar->codec_type;
         av_log(NULL, AV_LOG_DEBUG, "Demuxer gave frame of stream_index %u\n",
                 stream_index);
 
         if (filter_ctx[stream_index].filter_graph) {
             av_log(NULL, AV_LOG_DEBUG, "Going to reencode&filter the frame\n");
-            frame = av_frame_alloc();
-            if (!frame) {
-                ret = AVERROR(ENOMEM);
-                break;
-            }
             av_packet_rescale_ts(&packet,
                                  ifmt_ctx->streams[stream_index]->time_base,
                                  stream_ctx[stream_index].dec_ctx->time_base);
-            dec_func = (type == AVMEDIA_TYPE_VIDEO) ? avcodec_decode_video2 :
-                avcodec_decode_audio4;
-            ret = dec_func(stream_ctx[stream_index].dec_ctx, frame,
-                    &got_frame, &packet);
-            if (ret < 0) {
-                av_frame_free(&frame);
-                av_log(NULL, AV_LOG_ERROR, "Decoding failed\n");
-                break;
-            }
-
-            if (got_frame) {
-                frame->pts = frame->best_effort_timestamp;
-                ret = filter_encode_write_frame(frame, stream_index);
-                av_frame_free(&frame);
-                if (ret < 0)
-                    goto end;
-            } else {
-                av_frame_free(&frame);
-            }
+            ret = decode_filter_encode_write_frame(&packet, stream_index);
+            if (ret < 0)
+                goto end;
         } else {
             /* remux this frame without reencoding */
             av_packet_rescale_ts(&packet,
@@ -574,6 +1052,17 @@ int main(int argc, char **argv)
                 goto end;
         }
         av_packet_unref(&packet);
+    }
+
+    for (i = 0; i < ifmt_ctx->nb_streams; i++) {
+        if (!filter_ctx[i].filter_graph)
+            continue;
+
+        ret = decode_filter_encode_write_frame(NULL, i);
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Flushing decoder failed\n");
+            goto end;
+        }
     }
 
     /* flush filters and encoders */
@@ -598,7 +1087,6 @@ int main(int argc, char **argv)
     av_write_trailer(ofmt_ctx);
 end:
     av_packet_unref(&packet);
-    av_frame_free(&frame);
     for (i = 0; i < ifmt_ctx->nb_streams; i++) {
         avcodec_free_context(&stream_ctx[i].dec_ctx);
         if (ofmt_ctx && ofmt_ctx->nb_streams > i && ofmt_ctx->streams[i] && stream_ctx[i].enc_ctx)
@@ -612,6 +1100,9 @@ end:
     if (ofmt_ctx && !(ofmt_ctx->oformat->flags & AVFMT_NOFILE))
         avio_closep(&ofmt_ctx->pb);
     avformat_free_context(ofmt_ctx);
+#ifdef USE_UF_RENDERLIB
+    free_renderlib();
+#endif
 
     if (ret < 0)
         av_log(NULL, AV_LOG_ERROR, "Error occurred: %s\n", av_err2str(ret));
