@@ -83,6 +83,10 @@ host_gid=$(id -g)
 
 compose_run_cmd=(docker compose -f "${compose_file}" run --rm -e UF_BASE_IMAGE="${base_image}")
 
+if [[ -n "${UF_RENDERLIB_PASSTHROUGH_ON_FAILURE+x}" ]]; then
+    compose_run_cmd+=( -e UF_RENDERLIB_PASSTHROUGH_ON_FAILURE="${UF_RENDERLIB_PASSTHROUGH_ON_FAILURE}" )
+fi
+
 command_name=$1
 shift
 
