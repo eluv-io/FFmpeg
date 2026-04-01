@@ -77,9 +77,10 @@
 static const AVOption options[] = {
     { "brand",    "Override major brand", offsetof(MOVMuxContext, major_brand),   AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "empty_hdlr_name", "write zero-length name string in hdlr atoms within mdia and minf atoms", offsetof(MOVMuxContext, empty_hdlr_name), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
+    { "encryption_iv", "Specify the media encryption iv (hex)", offsetof(MOVMuxContext, encryption_iv), AV_OPT_TYPE_BINARY, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "encryption_key", "The media encryption key (hex)", offsetof(MOVMuxContext, encryption_key), AV_OPT_TYPE_BINARY, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "encryption_kid", "The media encryption key identifier (hex)", offsetof(MOVMuxContext, encryption_kid), AV_OPT_TYPE_BINARY, .flags = AV_OPT_FLAG_ENCODING_PARAM },
-    { "encryption_scheme",    "Configures the encryption scheme, allowed values are none, cenc-aes-ctr", offsetof(MOVMuxContext, encryption_scheme_str),   AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
+    { "encryption_scheme", "Configures the Common Encryption scheme, allowed values are none, cenc-aes-ctr, cenc-aes-cbc-pattern", offsetof(MOVMuxContext, encryption_scheme_str), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "frag_duration", "Maximum fragment duration", offsetof(MOVMuxContext, max_fragment_duration), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { "frag_interleave", "Interleave samples within fragments (max number of consecutive samples, lower is tighter interleaving, but with more overhead)", offsetof(MOVMuxContext, frag_interleave), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM },
     { "frag_size", "Maximum fragment size", offsetof(MOVMuxContext, max_fragment_size), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
@@ -3317,7 +3318,8 @@ static int mov_write_stbl_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContext
     mov_write_stsc_tag(pb, track);
     mov_write_stsz_tag(pb, track);
     mov_write_stco_tag(pb, track);
-    if (track->cenc.aes_ctr && !(mov->flags & FF_MOV_FLAG_FRAGMENT)) {
+    if (track->cenc.encryption_scheme != MOV_ENC_NONE && !(mov->flags & FF_MOV_FLAG_FRAGMENT)) {
+        ff_mov_cenc_write_senc_tag(&track->cenc, pb, 0);
         ff_mov_cenc_write_stbl_atoms(&track->cenc, pb, 0);
     }
     if (track->par->codec_id == AV_CODEC_ID_OPUS || track->par->codec_id == AV_CODEC_ID_AAC) {
@@ -5645,8 +5647,10 @@ static int mov_write_traf_tag(AVIOContext *pb, MOVMuxContext *mov,
         }
     }
 
-    if (track->cenc.aes_ctr && (mov->flags & FF_MOV_FLAG_FRAGMENT))
+    if (track->cenc.encryption_scheme != MOV_ENC_NONE) {
+        ff_mov_cenc_write_senc_tag(&track->cenc, pb, moof_offset);
         ff_mov_cenc_write_stbl_atoms(&track->cenc, pb, moof_offset);
+    }
 
     return update_size(pb, pos);
 }
@@ -5668,7 +5672,7 @@ static int mov_write_moof_tag_internal(AVIOContext *pb, MOVMuxContext *mov,
             continue;
         if (!track->entry)
             continue;
-        if (track->cenc.aes_ctr && (mov->flags & FF_MOV_FLAG_FRAGMENT))
+        if (track->cenc.encryption_scheme != MOV_ENC_NONE && (mov->flags & FF_MOV_FLAG_FRAGMENT))
             mov_write_pssh_tag(pb, track->st);
         mov_write_traf_tag(pb, mov, track, pos, moof_size);
     }
@@ -6608,6 +6612,8 @@ static int mov_flush_fragment(AVFormatContext *s, int force)
 
         avio_write(s->pb, buf, buf_size);
         av_free(buf);
+
+        ff_mov_cenc_auxiliary_info_reset(&track->cenc);
     }
 
     mov->mdat_size = 0;
@@ -6829,8 +6835,8 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
                 return ret;
             avio_write(pb, reformatted_data, size);
         } else {
-            if (trk->cenc.aes_ctr) {
-                size = ff_mov_cenc_avc_parse_nal_units(&trk->cenc, pb, pkt->data, size);
+            if (trk->cenc.encryption_scheme != MOV_ENC_NONE) {
+                size = ff_mov_cenc_avc_parse_nal_units(s, &trk->cenc, pb, pkt);
                 if (size < 0) {
                     ret = size;
                     goto err;
@@ -6850,8 +6856,8 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
                 return ret;
             avio_write(pb, reformatted_data, size);
         } else {
-            if (trk->cenc.aes_ctr) {
-                size = ff_mov_cenc_avc_parse_nal_units(&trk->cenc, pb, pkt->data, size);
+            if (trk->cenc.encryption_scheme != MOV_ENC_NONE) {
+                size = ff_mov_cenc_avc_parse_nal_units(s, &trk->cenc, pb, pkt);
                 if (size < 0) {
                     ret = size;
                     goto err;
@@ -6872,7 +6878,7 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
         } else {
             size = ff_vvc_annexb2mp4(pb, pkt->data, pkt->size, 0, NULL);
         }
-    } else if (par->codec_id == AV_CODEC_ID_AV1 && !trk->cenc.aes_ctr) {
+    } else if (par->codec_id == AV_CODEC_ID_AV1 && trk->cenc.encryption_scheme == MOV_ENC_NONE) {
         if (trk->hint_track >= 0 && trk->hint_track < mov->nb_tracks) {
             ret = ff_av1_filter_obus_buf(pkt->data, &reformatted_data,
                                          &size, &offset);
@@ -6917,15 +6923,11 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
 
         avio_write(s->pb, pkt->data, pkt->size);
     } else {
-        if (trk->cenc.aes_ctr) {
-            uint8_t *extradata = trk->extradata[trk->last_stsd_index];
-            int extradata_size = trk->extradata_size[trk->last_stsd_index];
-            if (par->codec_id == AV_CODEC_ID_H264 && extradata_size > 4) {
-                int nal_size_length = (extradata[4] & 0x3) + 1;
-                ret = ff_mov_cenc_avc_write_nal_units(s, &trk->cenc, nal_size_length, pb, pkt->data, size);
-            } else if(par->codec_id == AV_CODEC_ID_HEVC && extradata_size > 21) {
-                int nal_size_length = (extradata[21] & 0x3) + 1;
-                ret = ff_mov_cenc_avc_write_nal_units(s, &trk->cenc, nal_size_length, pb, pkt->data, size);
+        if (trk->cenc.encryption_scheme != MOV_ENC_NONE) {
+            if (par->codec_id == AV_CODEC_ID_H264 && par->extradata_size > 4) {
+                ret = ff_mov_cenc_h2645_write_nal_units(s, &trk->cenc, pb, pkt);
+            } else if(par->codec_id == AV_CODEC_ID_HEVC && par->extradata_size > 21) {
+                ret = ff_mov_cenc_h2645_write_nal_units(s, &trk->cenc, pb, pkt);
             } else if(par->codec_id == AV_CODEC_ID_VVC) {
                 ret = AVERROR_PATCHWELCOME;
             } else if(par->codec_id == AV_CODEC_ID_AV1) {
@@ -6939,7 +6941,7 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
                 ret = ff_mov_cenc_write_packet(&trk->cenc, pb, pkt->data, size);
             }
 
-            if (ret) {
+            if (ret < 0) {
                 goto err;
             }
         } else {
@@ -8062,15 +8064,23 @@ static int mov_init(AVFormatContext *s)
                     mov->encryption_key_len, AES_CTR_KEY_SIZE);
                 return AVERROR(EINVAL);
             }
+        } else if (strcmp(mov->encryption_scheme_str, "cenc-aes-cbc-pattern") == 0) {
+            mov->encryption_scheme = MOV_ENC_CENC_AES_CBC_PATTERN;
 
-            if (mov->encryption_kid_len != CENC_KID_SIZE) {
-                av_log(s, AV_LOG_ERROR, "Invalid encryption kid len %d expected %d\n",
-                    mov->encryption_kid_len, CENC_KID_SIZE);
+            if (mov->encryption_key_len != 16) { // 9.4.3 of the ISO CENC spec
+                av_log(s, AV_LOG_ERROR, "Invalid encryption key len %d expected 16\n",
+                    mov->encryption_key_len);
                 return AVERROR(EINVAL);
             }
         } else {
             av_log(s, AV_LOG_ERROR, "unsupported encryption scheme %s\n",
                 mov->encryption_scheme_str);
+            return AVERROR(EINVAL);
+        }
+
+        if (mov->encryption_kid_len != CENC_KID_SIZE) {
+            av_log(s, AV_LOG_ERROR, "Invalid encryption kid len %d expected %d\n",
+                mov->encryption_kid_len, CENC_KID_SIZE);
             return AVERROR(EINVAL);
         }
     }
@@ -8287,8 +8297,10 @@ static int mov_init(AVFormatContext *s)
 
         avpriv_set_pts_info(st, 64, 1, track->timescale);
 
-        if (mov->encryption_scheme == MOV_ENC_CENC_AES_CTR) {
-            ret = ff_mov_cenc_init(&track->cenc, mov->encryption_key,
+        if (mov->encryption_scheme != MOV_ENC_NONE) {
+            ret = ff_mov_cenc_init(&track->cenc, track->par,
+                mov->encryption_scheme, mov->encryption_key,
+                mov->encryption_iv, mov->encryption_iv_len,
                 (track->par->codec_id == AV_CODEC_ID_H264 || track->par->codec_id == AV_CODEC_ID_HEVC ||
                  track->par->codec_id == AV_CODEC_ID_VVC || track->par->codec_id == AV_CODEC_ID_AV1),
                  track->par->codec_id, s->flags & AVFMT_FLAG_BITEXACT);
