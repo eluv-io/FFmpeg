@@ -22,12 +22,19 @@
 #include "libavcodec/av1_parse.h"
 #include "libavcodec/bytestream.h"
 #include "libavcodec/cbs_av1.h"
+#include "libavcodec/h2645_parse.h"
+#include "libavcodec/internal.h"
+#include "libavutil/aes.h"
+#include "libavutil/avassert.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mem.h"
+#include "libavutil/random_seed.h"
 #include "avio_internal.h"
 #include "movenc.h"
 #include "avc.h"
 #include "nal.h"
+
+#define AES_BLOCK_SIZE (16)
 
 static int auxiliary_info_alloc_size(MOVMuxCencContext* ctx, int size)
 {
@@ -46,7 +53,7 @@ static int auxiliary_info_alloc_size(MOVMuxCencContext* ctx, int size)
 }
 
 static int auxiliary_info_write(MOVMuxCencContext* ctx,
-                                         const uint8_t *buf_in, int size)
+                                const uint8_t *buf_in, int size)
 {
     int ret;
 
@@ -88,21 +95,50 @@ static int auxiliary_info_add_subsample(MOVMuxCencContext* ctx,
     return 0;
 }
 
+void ff_mov_cenc_auxiliary_info_reset(MOVMuxCencContext* ctx) {
+    ctx->auxiliary_info_size = 0;
+    ctx->auxiliary_info_entries = 0;
+}
+
 /**
  * Encrypt the input buffer and write using avio_write
+ *
+ * For AES-CBC, the block chain starting with MOVMuxCencContext->aes_cbc_iv is
+ * wholly contained in this function; i.e. the chain does not span multiple
+ * calls.
  */
 static void mov_cenc_write_encrypted(MOVMuxCencContext* ctx, AVIOContext *pb,
                                      const uint8_t *buf_in, int size)
 {
-    uint8_t chunk[4096];
+    uint8_t chunk[4000];
     const uint8_t* cur_pos = buf_in;
     int size_left = size;
-    int cur_size;
+    int cur_size, block_count, enc_size, remaining_size;
+    uint8_t aes_cbc_iv[AES_BLOCK_SIZE];
+
+    /* pattern encryption repeats every 10 blocks */
+    av_assert2(sizeof(chunk) % (AES_BLOCK_SIZE * 10) == 0);
+
+    if (ctx->encryption_scheme == MOV_ENC_CENC_AES_CBC_PATTERN) {
+        /* use constant IV and reset the chain for each sample/subsample */
+        memcpy(aes_cbc_iv, ctx->aes_cbc_iv, sizeof(aes_cbc_iv));
+    }
 
     while (size_left > 0) {
-        cur_size = FFMIN(size_left, sizeof(chunk));
-        av_aes_ctr_crypt(ctx->aes_ctr, chunk, cur_pos, cur_size);
-        avio_write(pb, chunk, cur_size);
+        cur_size = FFMIN((unsigned int)size_left, sizeof(chunk));
+        if (ctx->encryption_scheme == MOV_ENC_CENC_AES_CTR) {
+            av_aes_ctr_crypt(ctx->aes_ctr, chunk, cur_pos, cur_size);
+            avio_write(pb, chunk, cur_size);
+        } else { /* MOV_ENC_CENC_AES_CBC_PATTERN */
+            /* remaining data smaller than a full block remains unencrypted */
+            block_count = cur_size / AES_BLOCK_SIZE;
+            enc_size = block_count * AES_BLOCK_SIZE;
+            remaining_size = cur_size - enc_size;
+            /* same call for both pattern and full sample encryption */
+            av_aes_crypt(ctx->aes_cbc, chunk, cur_pos, block_count, aes_cbc_iv, 0);
+            avio_write(pb, chunk, enc_size);
+            avio_write(pb, cur_pos + enc_size, remaining_size);
+        }
         cur_pos += cur_size;
         size_left -= cur_size;
     }
@@ -113,14 +149,21 @@ static void mov_cenc_write_encrypted(MOVMuxCencContext* ctx, AVIOContext *pb,
  */
 static int mov_cenc_start_packet(MOVMuxCencContext* ctx)
 {
-    int ret;
+    int ret = 0;
 
-    /* write the iv */
-    ret = auxiliary_info_write(ctx, av_aes_ctr_get_iv(ctx->aes_ctr), AES_CTR_IV_SIZE);
-    if (ret) {
-        return ret;
+    /**
+     * write the iv
+     *
+     * omit for cbcs - the per-sample iv is zero when using a constant iv
+     */
+    if (ctx->encryption_scheme == MOV_ENC_CENC_AES_CTR) {
+        ret = auxiliary_info_write(ctx, av_aes_ctr_get_iv(ctx->aes_ctr), AES_CTR_IV_SIZE);
+        if (ret) {
+            return ret;
+        }
     }
 
+    /* subsample clear/protected data counts are not needed for full sample encryption */
     if (!ctx->use_subsamples) {
         return 0;
     }
@@ -142,15 +185,24 @@ static int mov_cenc_start_packet(MOVMuxCencContext* ctx)
 static int mov_cenc_end_packet(MOVMuxCencContext* ctx)
 {
     size_t new_alloc_size;
+    size_t sample_iv_size;
 
-    av_aes_ctr_increment_iv(ctx->aes_ctr);
-
-    if (!ctx->use_subsamples) {
-        ctx->auxiliary_info_entries++;
-        return 0;
+    if (ctx->encryption_scheme == MOV_ENC_CENC_AES_CTR) {
+        sample_iv_size = AES_CTR_IV_SIZE;
+        av_aes_ctr_increment_iv(ctx->aes_ctr);
+        if (!ctx->use_subsamples) {
+            ctx->auxiliary_info_entries++;
+            return 0;
+        }
+    } else { /* MOV_ENC_CENC_AES_CBC_PATTERN */
+        sample_iv_size = 0; /* constant iv */
+        if (!ctx->use_subsamples) {
+            /* no aux info needed */
+            return 0;
+        }
     }
 
-    /* add the auxiliary info entry size*/
+    /* add the auxiliary info entry size */
     if (ctx->auxiliary_info_entries >= ctx->auxiliary_info_sizes_alloc_size) {
         new_alloc_size = ctx->auxiliary_info_entries * 2 + 1;
         if (av_reallocp(&ctx->auxiliary_info_sizes, new_alloc_size)) {
@@ -160,10 +212,10 @@ static int mov_cenc_end_packet(MOVMuxCencContext* ctx)
         ctx->auxiliary_info_sizes_alloc_size = new_alloc_size;
     }
     ctx->auxiliary_info_sizes[ctx->auxiliary_info_entries] =
-        AES_CTR_IV_SIZE + ctx->auxiliary_info_size - ctx->auxiliary_info_subsample_start;
+        sample_iv_size + ctx->auxiliary_info_size - ctx->auxiliary_info_subsample_start;
     ctx->auxiliary_info_entries++;
 
-    /* update the subsample count*/
+    /* update the subsample count */
     AV_WB16(ctx->auxiliary_info + ctx->auxiliary_info_subsample_start, ctx->subsample_count);
 
     return 0;
@@ -194,36 +246,74 @@ int ff_mov_cenc_write_packet(MOVMuxCencContext* ctx, AVIOContext *pb,
     return 0;
 }
 
-int ff_mov_cenc_avc_parse_nal_units(MOVMuxCencContext* ctx, AVIOContext *pb,
-                                 const uint8_t *buf_in, int size)
+// TODO refactor with ff_mov_cenc_h2645_write_nal_units
+int ff_mov_cenc_avc_parse_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
+                                    AVIOContext *pb, AVPacket *pkt)
 {
-    const uint8_t *p = buf_in;
-    const uint8_t *end = p + size;
+    int encsize, nalsize, naltype, ret, slice_header_len;
+    int clear_bytes = 0;
+    int encrypted_bytes = 0;
+    int nal_index = 0;
+    int size = 0;
+    const uint8_t *start = pkt->data;
+    const uint8_t *end = start + pkt->size;
     const uint8_t *nal_start, *nal_end;
-    int ret;
+    uint8_t *parsed_buf_out;
+    int parsed_buf_out_size;
+    int header_bits;
+    H2645NAL *nals;
+    int nals_valid;
 
     ret = mov_cenc_start_packet(ctx);
     if (ret) {
         return ret;
     }
 
-    size = 0;
-    nal_start = ff_nal_find_startcode(p, end);
+    nals_valid = ctx->parser &&
+        av_parser_parse2(ctx->parser, ctx->parser_avctx, &parsed_buf_out,
+            &parsed_buf_out_size, pkt->data, pkt->size, pkt->pts, pkt->dts, pkt->pos) >= 0;
+    nals = nals_valid ? (H2645NAL*) avpriv_h264_extract_nals(ctx->parser) : NULL;
+
+    nal_start = ff_nal_find_startcode(start, end);
     for (;;) {
         while (nal_start < end && !*(nal_start++));
-        if (nal_start == end)
+        if (nal_start == end) {
+            if (ctx->subsample_count == 0) {
+                /* must write at least one subsample before exiting */
+                auxiliary_info_add_subsample(ctx, clear_bytes, encrypted_bytes);
+            }
             break;
+        }
 
         nal_end = ff_nal_find_startcode(nal_start, end);
+        nalsize = nal_end - nal_start;
+        avio_wb32(pb, nalsize);
+        clear_bytes += 4;
 
-        avio_wb32(pb, nal_end - nal_start);
-        avio_w8(pb, *nal_start);
-        mov_cenc_write_encrypted(ctx, pb, nal_start + 1, nal_end - nal_start - 1);
+        naltype = *nal_start & 0x1f;
+        header_bits = (nals && nal_index < 32 /* MAX_SLICES */) ? nals[nal_index].slice_header_len_bits : 0;
+        slice_header_len = (header_bits + 7) / 8;
+        if ((naltype == 1 || naltype == 5) &&
+             nalsize >= slice_header_len + AES_BLOCK_SIZE)
+        {
+            avio_write(pb, nal_start, slice_header_len);
+            clear_bytes += slice_header_len;
 
-        auxiliary_info_add_subsample(ctx, 5, nal_end - nal_start - 1);
+            encsize = nalsize - slice_header_len;
+            mov_cenc_write_encrypted(ctx, pb, nal_start + slice_header_len, encsize);
+            encrypted_bytes += encsize;
+
+            auxiliary_info_add_subsample(ctx, clear_bytes, encrypted_bytes);
+            clear_bytes = 0;
+            encrypted_bytes = 0;
+        } else {
+            avio_write(pb, nal_start, nalsize);
+            clear_bytes += nalsize;
+        }
 
         size += 4 + nal_end - nal_start;
         nal_start = nal_end;
+        nal_index++;
     }
 
     ret = mov_cenc_end_packet(ctx);
@@ -234,45 +324,92 @@ int ff_mov_cenc_avc_parse_nal_units(MOVMuxCencContext* ctx, AVIOContext *pb,
     return size;
 }
 
-int ff_mov_cenc_avc_write_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
-    int nal_length_size, AVIOContext *pb, const uint8_t *buf_in, int size)
+// TODO combine with ff_mov_cenc_avc_parse_nal_units
+int ff_mov_cenc_h2645_write_nal_units(AVFormatContext *s, MOVMuxCencContext *ctx,
+                                      AVIOContext *pb, AVPacket *pkt)
 {
-    int nalsize;
-    int ret;
-    int j;
+    int encsize, j, nalsize, naltype, ret, slice_header_len, header_bits;
+    int clear_bytes = 0;
+    int encrypted_bytes = 0;
+    int nal_index = 0;
+    int size = 0;
+    const uint8_t *buf_in = pkt->data;
+    int remaining = pkt->size;
+    uint8_t *parsed_buf_out;
+    int parsed_buf_out_size;
+    H2645NAL* nals;
+    int nals_valid;
+    AVCodecParameters *par = s->streams[pkt->stream_index]->codecpar;
+    int nal_length_size = (par->extradata[4] & 0x3) + 1;
+
+    if (par->codec_id == AV_CODEC_ID_HEVC) {
+        nal_length_size = (par->extradata[21] & 0x3) + 1;
+    }
 
     ret = mov_cenc_start_packet(ctx);
     if (ret) {
         return ret;
     }
 
-    while (size > 0) {
+    nals_valid = ctx->parser &&
+        av_parser_parse2(ctx->parser, ctx->parser_avctx, &parsed_buf_out,
+            &parsed_buf_out_size, pkt->data, pkt->size, pkt->pts, pkt->dts, pkt->pos) >= 0;
+    nals = nals_valid ? (H2645NAL*)avpriv_h264_extract_nals(ctx->parser) : NULL;
+
+    // TODO maybe use parsed info above to not parse again below
+    while (remaining > 0) {
         /* parse the nal size */
-        if (size < nal_length_size + 1) {
-            av_log(s, AV_LOG_ERROR, "CENC-AVC: remaining size %d smaller than nal length+type %d\n",
-                size, nal_length_size + 1);
+        if (remaining < nal_length_size) {
+            av_log(s, AV_LOG_ERROR, "CENC-AVC: remaining size %d smaller than nal length header %d\n", remaining, nal_length_size);
             return -1;
         }
 
-        avio_write(pb, buf_in, nal_length_size + 1);
-
+        avio_write(pb, buf_in, nal_length_size);
         nalsize = 0;
         for (j = 0; j < nal_length_size; j++) {
             nalsize = (nalsize << 8) | *buf_in++;
         }
-        size -= nal_length_size;
+        clear_bytes += nal_length_size;
+        remaining -= nal_length_size;
 
-        /* encrypt the nal body */
-        if (nalsize <= 0 || nalsize > size) {
-            av_log(s, AV_LOG_ERROR, "CENC-AVC: nal size %d remaining %d\n", nalsize, size);
+        if (nalsize <= 0 || nalsize > remaining) {
+            av_log(s, AV_LOG_ERROR, "CENC-AVC: nal size %d, remaining %d\n", nalsize, remaining);
             return -1;
         }
 
-        mov_cenc_write_encrypted(ctx, pb, buf_in + 1, nalsize - 1);
-        buf_in += nalsize;
-        size -= nalsize;
+        /**
+         * Only encrypt slice data 1 H264_NAL_SLICE and 5 H264_NAL_IDR_SLICE.
+         * Leave other nal types and VCL (video) slice headers clear, per Apple
+         * MPEG-2 HLS encryption and CENC specs.
+         */
+        naltype = *buf_in & 0x1f;
+        header_bits = (nals && nal_index < 32 /* MAX_SLICES */) ? nals[nal_index].slice_header_len_bits : 0;
+        slice_header_len = (header_bits + 7) / 8;
+        if ((naltype == 1 || naltype == 5) &&
+             nalsize >= slice_header_len + AES_BLOCK_SIZE)
+        {
+            avio_write(pb, buf_in, slice_header_len);
+            clear_bytes += slice_header_len;
 
-        auxiliary_info_add_subsample(ctx, nal_length_size + 1, nalsize - 1);
+            encsize = nalsize - slice_header_len;
+            mov_cenc_write_encrypted(ctx, pb, buf_in + slice_header_len, encsize);
+            encrypted_bytes += encsize;
+
+            auxiliary_info_add_subsample(ctx, clear_bytes, encrypted_bytes);
+            clear_bytes = 0;
+            encrypted_bytes = 0;
+        } else {
+            avio_write(pb, buf_in, nalsize);
+            clear_bytes += nalsize;
+            if (remaining - nalsize <= 0 && ctx->subsample_count == 0) {
+                /* must write at least one subsample before exiting */
+                auxiliary_info_add_subsample(ctx, clear_bytes, encrypted_bytes);
+            }
+        }
+        remaining -= nalsize;
+        size += nal_length_size + nalsize;
+        buf_in += nalsize;
+        nal_index++;
     }
 
     ret = mov_cenc_end_packet(ctx);
@@ -280,7 +417,7 @@ int ff_mov_cenc_avc_write_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
         return ret;
     }
 
-    return 0;
+    return size;
 }
 
 static int write_tiles(AVFormatContext *s, MOVMuxCencContext *ctx, AVIOContext *pb, AV1_OBU_Type type,
@@ -491,46 +628,63 @@ static int64_t update_size(AVIOContext *pb, int64_t pos)
     return curpos - pos;
 }
 
-static int mov_cenc_write_senc_tag(MOVMuxCencContext* ctx, AVIOContext *pb,
-                                   int64_t* auxiliary_info_offset)
+int ff_mov_cenc_write_senc_tag(MOVMuxCencContext* ctx, AVIOContext *pb, int64_t moof_offset)
 {
-    int64_t pos = avio_tell(pb);
+    int64_t pos;
 
+    if (ctx->auxiliary_info_entries == 0) {
+        return 0;
+    }
+
+    pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
     ffio_wfourcc(pb, "senc");
     avio_wb32(pb, ctx->use_subsamples ? 0x02 : 0); /* version & flags */
     avio_wb32(pb, ctx->auxiliary_info_entries); /* entry count */
-    *auxiliary_info_offset = avio_tell(pb);
+    ctx->auxiliary_info_offset = avio_tell(pb) - moof_offset;
     avio_write(pb, ctx->auxiliary_info, ctx->auxiliary_info_size);
     return update_size(pb, pos);
 }
 
-static int mov_cenc_write_saio_tag(AVIOContext *pb, int64_t auxiliary_info_offset)
+static int mov_cenc_write_saio_tag(MOVMuxCencContext* ctx, AVIOContext *pb)
 {
-    int64_t pos = avio_tell(pb);
+    int64_t pos;
     uint8_t version;
 
+    if (ctx->auxiliary_info_entries == 0) {
+        return 0;
+    }
+
+    pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
     ffio_wfourcc(pb, "saio");
-    version = auxiliary_info_offset > 0xffffffff ? 1 : 0;
+    version = ctx->auxiliary_info_offset > 0xffffffff ? 1 : 0;
     avio_w8(pb, version);
     avio_wb24(pb, 0); /* flags */
     avio_wb32(pb, 1); /* entry count */
     if (version) {
-        avio_wb64(pb, auxiliary_info_offset);
+        avio_wb64(pb, ctx->auxiliary_info_offset);
     } else {
-        avio_wb32(pb, auxiliary_info_offset);
+        avio_wb32(pb, ctx->auxiliary_info_offset);
     }
     return update_size(pb, pos);
 }
 
 static int mov_cenc_write_saiz_tag(MOVMuxCencContext* ctx, AVIOContext *pb)
 {
-    int64_t pos = avio_tell(pb);
+    int64_t pos;
+    /* constant iv for cbcs, so sample iv is always zero */
+    uint8_t iv_size = ctx->encryption_scheme == MOV_ENC_CENC_AES_CTR ? AES_CTR_IV_SIZE : 0;
+
+    if (ctx->auxiliary_info_entries == 0) {
+        return 0;
+    }
+
+    pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
     ffio_wfourcc(pb, "saiz");
     avio_wb32(pb, 0); /* version & flags */
-    avio_w8(pb, ctx->use_subsamples ? 0 : AES_CTR_IV_SIZE);    /* default size*/
+    avio_w8(pb, ctx->use_subsamples ? 0 : iv_size); /* default size */
     avio_wb32(pb, ctx->auxiliary_info_entries); /* entry count */
     if (ctx->use_subsamples) {
         avio_write(pb, ctx->auxiliary_info_sizes, ctx->auxiliary_info_entries);
@@ -541,25 +695,38 @@ static int mov_cenc_write_saiz_tag(MOVMuxCencContext* ctx, AVIOContext *pb)
 void ff_mov_cenc_write_stbl_atoms(MOVMuxCencContext* ctx, AVIOContext *pb,
                                   int64_t moof_offset)
 {
-    int64_t auxiliary_info_offset;
-
-    mov_cenc_write_senc_tag(ctx, pb, &auxiliary_info_offset);
-    mov_cenc_write_saio_tag(pb, auxiliary_info_offset - moof_offset);
+    mov_cenc_write_saio_tag(ctx, pb);
     mov_cenc_write_saiz_tag(ctx, pb);
 }
 
-static int mov_cenc_write_schi_tag(AVIOContext *pb, uint8_t* kid)
+static int mov_cenc_write_schi_tag(MOVTrack* track, AVIOContext *pb, uint8_t* kid)
 {
+    size_t iv_size;
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0);     /* size */
     ffio_wfourcc(pb, "schi");
 
-    avio_wb32(pb, 32);    /* size */
-    ffio_wfourcc(pb, "tenc");
-    avio_wb32(pb, 0);     /* version & flags */
-    avio_wb24(pb, 1);     /* is encrypted */
-    avio_w8(pb, AES_CTR_IV_SIZE); /* iv size */
-    avio_write(pb, kid, CENC_KID_SIZE);
+    if (track->cenc.encryption_scheme == MOV_ENC_CENC_AES_CTR) {
+        avio_wb32(pb, 16 + CENC_KID_SIZE);  /* size */
+        ffio_wfourcc(pb, "tenc");
+        avio_wb32(pb, 0);                   /* version & flags */
+        avio_wb24(pb, 1);                   /* default_isProtected */
+        avio_w8(pb, AES_CTR_IV_SIZE);       /* default_Per_Sample_IV_Size */
+        avio_write(pb, kid, CENC_KID_SIZE); /* default_KID */
+    } else { /* MOV_ENC_CENC_AES_CBC_PATTERN */
+        iv_size = sizeof(track->cenc.aes_cbc_iv);
+        avio_wb32(pb, 16 + CENC_KID_SIZE + 1 + iv_size);  /* size */
+        ffio_wfourcc(pb, "tenc");
+        avio_w8(pb, 1);                     /* version */
+        avio_wb24(pb, 0);                   /* flags */
+        avio_w8(pb, 0);                     /* reserved */
+        avio_w8(pb, track->cenc.use_subsamples ? 0x19 : 0); /* default_crypt_byte_block, default_skip_byte_block */
+        avio_w8(pb, 1);                     /* default_isProtected */
+        avio_w8(pb, 0);                     /* default_Per_Sample_IV_Size */
+        avio_write(pb, kid, CENC_KID_SIZE); /* default_KID */
+        avio_w8(pb, iv_size);               /* default_constant_IV_size */
+        avio_write(pb, track->cenc.aes_cbc_iv, iv_size); /* default_constant_IV */
+    }
 
     return update_size(pb, pos);
 }
@@ -567,23 +734,26 @@ static int mov_cenc_write_schi_tag(AVIOContext *pb, uint8_t* kid)
 int ff_mov_cenc_write_sinf_tag(MOVTrack* track, AVIOContext *pb, uint8_t* kid)
 {
     int64_t pos = avio_tell(pb);
-    avio_wb32(pb, 0); /* size */
+
+    /* sinf */
+    avio_wb32(pb, 0);               /* size */
     ffio_wfourcc(pb, "sinf");
 
     /* frma */
-    avio_wb32(pb, 12);    /* size */
+    avio_wb32(pb, 12);              /* size */
     ffio_wfourcc(pb, "frma");
     avio_wl32(pb, track->tag);
 
     /* schm */
-    avio_wb32(pb, 20);    /* size */
+    avio_wb32(pb, 20);              /* size */
     ffio_wfourcc(pb, "schm");
-    avio_wb32(pb, 0); /* version & flags */
-    ffio_wfourcc(pb, "cenc");    /* scheme type*/
-    avio_wb32(pb, 0x10000); /* scheme version */
+    avio_wb32(pb, 0);               /* version & flags */
+    ffio_wfourcc(pb, track->cenc.encryption_scheme == MOV_ENC_CENC_AES_CTR ?
+                 "cenc" : "cbcs");  /* scheme type*/
+    avio_wb32(pb, 0x10000);         /* scheme version */
 
     /* schi */
-    mov_cenc_write_schi_tag(pb, kid);
+    mov_cenc_write_schi_tag(track, pb, kid);
 
     return update_size(pb, pos);
 }
@@ -596,17 +766,18 @@ static const CodedBitstreamUnitType decompose_unit_types[] = {
     AV1_OBU_FRAME,
 };
 
-int ff_mov_cenc_init(MOVMuxCencContext* ctx, uint8_t* encryption_key,
-                     int use_subsamples, enum AVCodecID codec_id, int bitexact)
+static int mov_cenc_ctr_init(MOVMuxCencContext* ctx, uint8_t* key, int bitexact)
 {
     int ret;
+
+    av_assert0(ctx->aes_ctr == NULL);
 
     ctx->aes_ctr = av_aes_ctr_alloc();
     if (!ctx->aes_ctr) {
         return AVERROR(ENOMEM);
     }
 
-    ret = av_aes_ctr_init(ctx->aes_ctr, encryption_key);
+    ret = av_aes_ctr_init(ctx->aes_ctr, key);
     if (ret != 0) {
         return ret;
     }
@@ -615,7 +786,64 @@ int ff_mov_cenc_init(MOVMuxCencContext* ctx, uint8_t* encryption_key,
         av_aes_ctr_set_random_iv(ctx->aes_ctr);
     }
 
+    return 0;
+}
+
+static int mov_cenc_cbc_init(MOVMuxCencContext* ctx, uint8_t* key,
+                             uint8_t* iv, int iv_len)
+{
+    int ret;
+
+    av_assert0(ctx->aes_cbc == NULL);
+
+    ctx->aes_cbc = av_aes_alloc();
+    if (!ctx->aes_cbc) {
+        return AVERROR(ENOMEM);
+    }
+
+    ret = av_aes_init(ctx->aes_cbc, key, 128, 0);
+    if (ret != 0) {
+        return ret;
+    }
+
+    if (ctx->use_subsamples) {
+        /* hard-coded to 1 encrypted 9 clear; signaled in the tenc atom */
+        av_aes_set_pattern(ctx->aes_cbc, 1, 9);
+    }
+
+    if (iv_len == AES_BLOCK_SIZE) {
+        memcpy(ctx->aes_cbc_iv, iv, iv_len);
+    } else {
+        AV_WL32(ctx->aes_cbc_iv, av_get_random_seed());
+        AV_WL32(ctx->aes_cbc_iv + 4, av_get_random_seed());
+        AV_WL32(ctx->aes_cbc_iv + 8, av_get_random_seed());
+        AV_WL32(ctx->aes_cbc_iv + 12, av_get_random_seed());
+    }
+
+    return 0;
+}
+
+int ff_mov_cenc_init(MOVMuxCencContext* ctx, AVCodecParameters *par,
+                     MOVEncryptionScheme encryption_scheme, uint8_t* key,
+                     uint8_t* iv, int iv_len,
+                     int use_subsamples, enum AVCodecID codec_id, int bitexact)
+{
+    int ret;
+
+    ctx->encryption_scheme = encryption_scheme;
     ctx->use_subsamples = use_subsamples;
+
+    ctx->parser = av_parser_init(par->codec_id);
+    if (ctx->parser) {
+        ctx->parser_avctx = avcodec_alloc_context3(NULL);
+        if (!ctx->parser_avctx)
+            return AVERROR(ENOMEM);
+        ret = avcodec_parameters_to_context(ctx->parser_avctx, par);
+        if (ret < 0)
+            return ret;
+        // We only want to parse frame headers
+        ctx->parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
+    }
 
     if (codec_id == AV_CODEC_ID_AV1) {
         ret = ff_lavf_cbs_init(&ctx->cbc, codec_id, NULL);
@@ -626,16 +854,30 @@ int ff_mov_cenc_init(MOVMuxCencContext* ctx, uint8_t* encryption_key,
         ctx->cbc->nb_decompose_unit_types = FF_ARRAY_ELEMS(decompose_unit_types);
     }
 
+    switch (encryption_scheme) {
+    case MOV_ENC_CENC_AES_CTR:
+        return mov_cenc_ctr_init(ctx, key, bitexact);
+    case MOV_ENC_CENC_AES_CBC_PATTERN:
+        return mov_cenc_cbc_init(ctx, key, iv, iv_len);
+    default:
+        break;
+    }
     return 0;
 }
+
 
 void ff_mov_cenc_free(MOVMuxCencContext* ctx)
 {
     av_aes_ctr_free(ctx->aes_ctr);
+    if (ctx->encryption_scheme == MOV_ENC_CENC_AES_CBC_PATTERN && ctx->aes_cbc) {
+        av_freep(&ctx->aes_cbc);
+    }
     av_freep(&ctx->auxiliary_info);
     av_freep(&ctx->auxiliary_info_sizes);
 
     av_freep(&ctx->tile_group_sizes);
     ff_lavf_cbs_fragment_free(&ctx->temporal_unit);
     ff_lavf_cbs_close(&ctx->cbc);
+    av_parser_close(ctx->parser);
+    avcodec_free_context(&ctx->parser_avctx);
 }
