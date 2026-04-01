@@ -69,6 +69,9 @@ typedef struct libx265Context {
     float crf;
     int   cqp;
     int   forced_idr;
+    char *max_cll;
+    char *master_display;
+    int  bframes;
     char *preset;
     char *tune;
     char *profile;
@@ -461,6 +464,33 @@ FF_ENABLE_DEPRECATION_WARNINGS
         ret = libx265_param_parse_float(avctx, "pbratio", avctx->b_quant_factor);
         if (ret < 0)
             return ret;
+    }
+
+    if (ctx->max_cll != 0) {
+        if (ctx->api->param_parse(ctx->params, "max-cll", ctx->max_cll) == X265_PARAM_BAD_VALUE) {
+            av_log(avctx, AV_LOG_ERROR, "Invalid max_cll: %s.\n", ctx->max_cll);
+            return AVERROR(EINVAL);
+        }
+        av_log(avctx, AV_LOG_DEBUG, "Set max_cll=%s.\n", ctx->max_cll);
+    }
+
+    if (ctx->master_display != 0) {
+        if (ctx->api->param_parse(ctx->params, "master-display", ctx->master_display) == X265_PARAM_BAD_VALUE) {
+            av_log(avctx, AV_LOG_ERROR, "Invalid master_display: %s.\n", ctx->master_display);
+            return AVERROR(EINVAL);
+        }
+        av_log(avctx, AV_LOG_DEBUG, "Set master_display=%s.\n", ctx->master_display);
+    }
+
+    if (ctx->bframes >= 0) {
+        char bframes[20];
+
+        snprintf(bframes, sizeof(bframes), "%d", ctx->bframes);
+        if (ctx->api->param_parse(ctx->params, "bframes", bframes) == X265_PARAM_BAD_VALUE) {
+            av_log(avctx, AV_LOG_ERROR, "Invalid bframes: %d.\n", ctx->bframes);
+            return AVERROR(EINVAL);
+        }
+        av_log(avctx, AV_LOG_DEBUG, "Set bframes=%d.\n", ctx->bframes);
     }
 
     ctx->params->rc.vbvBufferSize = avctx->rc_buffer_size / 1000;
@@ -1007,6 +1037,9 @@ static int libx265_get_supported_config(const AVCodecContext *avctx,
 static const AVOption options[] = {
     { "crf",         "set the x265 crf",                                                            OFFSET(crf),       AV_OPT_TYPE_FLOAT,  { .dbl = -1 }, -1, FLT_MAX, VE },
     { "qp",          "set the x265 qp",                                                             OFFSET(cqp),       AV_OPT_TYPE_INT,    { .i64 = -1 }, -1, INT_MAX, VE },
+    { "max-cll",        "set the x265 max cll,max fall",                                               OFFSET(max_cll),         AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
+    { "master-display", "set the x265 master display",                                                 OFFSET(master_display),  AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
+    { "bframes",        "set max number of consecutive bframes",                                       OFFSET(bframes),         AV_OPT_TYPE_INT,    { .i64 = 0 }, 0, 0, VE },
     { "forced-idr",  "if forcing keyframes, force them as IDR frames",                              OFFSET(forced_idr),AV_OPT_TYPE_BOOL,   { .i64 =  0 },  0,       1, VE },
     { "preset",      "set the x265 preset",                                                         OFFSET(preset),    AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
     { "tune",        "set the x265 tune parameter",                                                 OFFSET(tune),      AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
