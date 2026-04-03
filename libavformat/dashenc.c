@@ -227,7 +227,6 @@ typedef struct DASHContext {
 
     int64_t seg_duration_ts;
     int64_t start_fragment_index;
-    int64_t frame_duration_ts;
 
     // Pass-through options to movenc -PTT
     char *encryption_scheme_str;
@@ -2348,7 +2347,7 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
     AVStream *st = s->streams[pkt->stream_index];
     OutputStream *os = &c->streams[pkt->stream_index];
     AdaptationSet *as = &c->as[os->as_idx - 1];
-    int64_t seg_end_duration, elapsed_duration;
+    int64_t elapsed_duration;
     int ret;
 
     ret = update_stream_extradata(s, os, pkt, &st->avg_frame_rate);
@@ -2416,10 +2415,8 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     if (c->use_template && !c->use_timeline) {
         elapsed_duration = pkt->pts - os->first_pts;
-        seg_end_duration = (int64_t) os->segment_index * os->seg_duration;
     } else {
         elapsed_duration = pkt->pts - os->start_pts;
-        seg_end_duration = os->seg_duration;
     }
 
     if (s->prev_pts != AV_NOPTS_VALUE) {
@@ -2481,9 +2478,6 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     if (pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
         elapsed_duration + frame_duration_variation >= c->seg_duration_ts)
-        /* av_compare_ts(elapsed_duration, st->time_base,
-                      seg_end_duration, AV_TIME_BASE_Q) >= 0)
-        */
     {
         if (!c->has_video || st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             c->last_duration = av_rescale_q(pkt->pts - os->start_pts,
@@ -2738,9 +2732,8 @@ static const AVOption options[] = {
     { "utc_timing_url", "URL of the page that will return the UTC timestamp in ISO format", OFFSET(utc_timing_url), AV_OPT_TYPE_STRING, { 0 }, 0, 0, E },
     { "window_size", "number of segments kept in the manifest", OFFSET(window_size), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, E },
     { "write_prft", "Write producer reference time element", OFFSET(write_prft), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, E},
-    { "seg_duration_ts", "segment duration timebase", OFFSET(seg_duration_ts), AV_OPT_TYPE_INT, { .i64 = 48048 }, 0, INT_MAX, E },
-    { "start_fragment_index", "starting frame sequence for fragmented mp4", OFFSET(start_fragment_index), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, E },
-    { "frame_duration_ts", "frame duration timebase", OFFSET(frame_duration_ts), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, E },
+    { "seg_duration_ts", "segment duration timebase", OFFSET(seg_duration_ts), AV_OPT_TYPE_INT64, { .i64 = 48048 }, 0, INT64_MAX, E },
+    { "start_fragment_index", "starting frame sequence for fragmented mp4", OFFSET(start_fragment_index), AV_OPT_TYPE_INT64, { .i64 = 0 }, 0, INT64_MAX, E },
     { "start_segment", "Specify the index of the first segment (which by default is 1)", OFFSET(start_segment), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, INT_MAX, E },
     { "encryption_scheme", "Configures the Common Encryption scheme, allowed values are none, cenc-aes-ctr, cenc-aes-cbc-pattern", OFFSET(encryption_scheme_str), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "encryption_key", "The media encryption key (hex)", OFFSET(encryption_key), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
