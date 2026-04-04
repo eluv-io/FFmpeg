@@ -1507,6 +1507,12 @@ static int init_crypto(AVFormatContext *s)
     int ret = 0;
     int write_key_file = 0;
 
+#if !CONFIG_GCRYPT && !CONFIG_OPENSSL
+    av_log(s, AV_LOG_WARNING,
+           "AES key/IV generation is not cryptographically secure: "
+           "build with gcrypt or OpenSSL for secure random number generation.\n");
+#endif
+
     const int iv_len = sizeof(c->aes_iv);
     const int iv_hex_len = iv_len * 2;
     if (!c->aes_iv_hex || strlen(c->aes_iv_hex) == 0) {
@@ -1514,6 +1520,7 @@ static int init_crypto(AVFormatContext *s)
             av_log(s, AV_LOG_ERROR, "Failed to generate an AES IV\n");
             return ret;
         }
+        av_freep(&c->aes_iv_hex);
         c->aes_iv_hex = av_mallocz(iv_hex_len + 1);
         ff_data_to_hex(c->aes_iv_hex, c->aes_iv, iv_len, 0);
         c->aes_iv_hex[iv_hex_len] = '\0';
@@ -1532,6 +1539,7 @@ static int init_crypto(AVFormatContext *s)
             av_log(s, AV_LOG_ERROR, "Failed to generate an AES key\n");
             return ret;
         }
+        av_freep(&c->aes_key_hex);
         c->aes_key_hex = av_mallocz(key_hex_len + 1);
         ff_data_to_hex(c->aes_key_hex, c->aes_key, key_len, 0);
         c->aes_key_hex[key_hex_len] = '\0';
@@ -1545,6 +1553,7 @@ static int init_crypto(AVFormatContext *s)
     }
 
     if (!c->aes_key_url || strlen(c->aes_key_url) == 0) {
+        av_freep(&c->aes_key_url);
         c->aes_key_url = av_mallocz(sizeof(AES_KEY_OUT_PATH));
         av_strlcpy(c->aes_key_url, AES_KEY_OUT_PATH, sizeof(AES_KEY_OUT_PATH));
         write_key_file = 1;

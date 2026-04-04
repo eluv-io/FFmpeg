@@ -69,7 +69,7 @@ typedef struct H264ParseContext {
     int last_frame_num;
     int curr_pic_num, max_pic_num;
     MMCO mmco[H264_MAX_MMCO_COUNT];
-    H2645NAL nals[MAX_SLICES]; // assume MAX_SLICES is the most NALs in a packet
+    H2645NAL nals[H264_MAX_NAL_UNITS];
 } H264ParseContext;
 
 void* avpriv_h264_extract_nals(AVCodecParserContext *s)
@@ -649,8 +649,8 @@ static inline int parse_nal_units(AVCodecParserContext *s,
         src_length = next_avc - buf_index;
         state = buf[buf_index];
 
-        if ((unsigned int)nal_index >= MAX_SLICES) {
-            av_log(avctx, AV_LOG_WARNING, "reached NAL parse limit: %d\n", MAX_SLICES);
+        if ((unsigned int)nal_index >= H264_MAX_NAL_UNITS) {
+            av_log(avctx, AV_LOG_WARNING, "reached NAL parse limit: %d\n", H264_MAX_NAL_UNITS);
             goto fail;
         }
         nal = &p->nals[nal_index];

@@ -291,7 +291,7 @@ int ff_mov_cenc_avc_parse_nal_units(AVFormatContext *s, MOVMuxCencContext* ctx,
         clear_bytes += 4;
 
         naltype = *nal_start & 0x1f;
-        header_bits = (nals && nal_index < 32 /* MAX_SLICES */) ? nals[nal_index].slice_header_len_bits : 0;
+        header_bits = (nals && nal_index < H264_MAX_NAL_UNITS) ? nals[nal_index].slice_header_len_bits : 0;
         slice_header_len = (header_bits + 7) / 8;
         if ((naltype == 1 || naltype == 5) &&
              nalsize >= slice_header_len + AES_BLOCK_SIZE)
@@ -383,7 +383,7 @@ int ff_mov_cenc_h2645_write_nal_units(AVFormatContext *s, MOVMuxCencContext *ctx
          * MPEG-2 HLS encryption and CENC specs.
          */
         naltype = *buf_in & 0x1f;
-        header_bits = (nals && nal_index < 32 /* MAX_SLICES */) ? nals[nal_index].slice_header_len_bits : 0;
+        header_bits = (nals && nal_index < H264_MAX_NAL_UNITS) ? nals[nal_index].slice_header_len_bits : 0;
         slice_header_len = (header_bits + 7) / 8;
         if ((naltype == 1 || naltype == 5) &&
              nalsize >= slice_header_len + AES_BLOCK_SIZE)
