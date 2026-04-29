@@ -22,6 +22,18 @@ Examples:
 EOF
 }
 
+require_image_exists() {
+    local image_name=$1
+
+    if docker image inspect "${image_name}" >/dev/null 2>&1; then
+        return
+    fi
+
+    echo "uniqFEED base image not found locally: ${image_name}" >&2
+    echo "Build or pull that image from the uniqFEED repository workflow, then rerun this wrapper." >&2
+    exit 1
+}
+
 expand_path() {
     local path=$1
 
@@ -78,10 +90,23 @@ if [[ -z "${UF_BASE_IMAGE+x}" && -f "${repo_root}/.env" ]]; then
 fi
 
 base_image="${UF_BASE_IMAGE:-uf_render_interface:ubuntu_22}"
+runtime_root=$(expand_path "${UF_RUNTIME_ROOT:-/runtime}")
+extra_runtime_lib_dirs="${UF_RUNTIME_EXTRA_LIB_DIRS:-}"
 host_uid=$(id -u)
 host_gid=$(id -g)
 
-compose_run_cmd=(docker compose -f "${compose_file}" run --rm -e UF_BASE_IMAGE="${base_image}")
+require_image_exists "${base_image}"
+
+declare -a runtime_mounts=()
+declare -A runtime_seen_mounts=()
+
+add_mount_if_needed runtime_mounts runtime_seen_mounts "${runtime_root}" ro
+
+compose_run_cmd=(docker compose -f "${compose_file}" run --rm -e UF_BASE_IMAGE="${base_image}" -e UF_RUNTIME_ROOT="${runtime_root}")
+
+if [[ -n "${extra_runtime_lib_dirs}" ]]; then
+    compose_run_cmd+=( -e UF_RUNTIME_EXTRA_LIB_DIRS="${extra_runtime_lib_dirs}" )
+fi
 
 if [[ -n "${UF_RENDERLIB_PASSTHROUGH_ON_FAILURE+x}" ]]; then
     compose_run_cmd+=( -e UF_RENDERLIB_PASSTHROUGH_ON_FAILURE="${UF_RENDERLIB_PASSTHROUGH_ON_FAILURE}" )
@@ -92,7 +117,7 @@ shift
 
 case "${command_name}" in
     build)
-        "${compose_run_cmd[@]}" ffmpeg-uniqfeed tools/build-uniqfeed-example.sh "$@"
+        "${compose_run_cmd[@]}" "${runtime_mounts[@]}" ffmpeg-uniqfeed tools/build-uniqfeed-example.sh "$@"
         ;;
     run)
         if [[ $# -ne 4 ]]; then
@@ -114,12 +139,14 @@ case "${command_name}" in
         add_mount_if_needed extra_mounts seen_mounts "${project_path}" ro
         add_mount_if_needed extra_mounts seen_mounts "${metadata_path}" ro
 
-        "${compose_run_cmd[@]}" --user "${host_uid}:${host_gid}" "${extra_mounts[@]}" ffmpeg-uniqfeed tools/run-uniqfeed-example.sh \
+        "${compose_run_cmd[@]}" --user "${host_uid}:${host_gid}" "${runtime_mounts[@]}" "${extra_mounts[@]}" ffmpeg-uniqfeed tools/run-uniqfeed-example.sh \
             "${input_path}" "${output_path}" "${project_path}" "${metadata_path}"
         ;;
     shell)
         exec docker compose -f "${compose_file}" run --rm \
             -e UF_BASE_IMAGE="${base_image}" \
+            -e UF_RUNTIME_ROOT="${runtime_root}" \
+            "${runtime_mounts[@]}" \
             ffmpeg-uniqfeed "$@"
         ;;
     -h|--help|help)

@@ -17,6 +17,7 @@ Current behavior:
 - uniqFEED is applied only to video frames.
 - uniqFEED is invoked once per filtered output frame, immediately before encode.
 - frame image data is exchanged with uniqFEED entirely in memory.
+- the example now queries the uniqFEED context for its native resolution instead of assuming `1280x720`.
 - metadata is still loaded from local `md-XXXXXX.bin` files for example purposes.
 
 Current non-goals:
@@ -55,6 +56,7 @@ The example requires:
 - include path access to `uf/renderlib/UfRenderInterface.h`
 - linkage against the uniqFEED render library
 - FFmpeg built with `libswscale`
+- a recent uniqFEED renderlib header and runtime that provide `uFGetContextResolution()` and `uFGetContextFramerate()`
 
 This repository does not currently wire those flags into the standard FFmpeg example build rules.
 
@@ -96,6 +98,26 @@ uf_render_interface:ubuntu_22
 That default is now stored in the repo-root [.env](/home/jan/ELV/FFmpeg/.env) file.
 
 The wrapper script reads `.env` automatically. If your local image uses a different tag, either edit `.env` or override `UF_BASE_IMAGE` on the command line.
+
+In the sibling uniqFEED repository, the expected base image is produced by its own Docker setup. The directly matching commands are:
+
+```sh
+cd /path/to/tnt-uniqfeed
+docker compose build uf_render_interface
+```
+
+or equivalently:
+
+```sh
+cd /path/to/tnt-uniqfeed
+docker build -t uf_render_interface:ubuntu_22 .
+```
+
+If you want the FFmpeg container workflow to use a sibling checkout such as `/home/jan/src/tnt-uniqfeed` instead of the runtime bundled at `/runtime`, set `UF_RUNTIME_ROOT` to that absolute path before invoking the wrapper script. The script will bind-mount that path into the container and build/run against its `include` and `lib` directories.
+
+If your uniqFEED runtime depends on additional shared-library directories outside that tree, set `UF_RUNTIME_EXTRA_LIB_DIRS` to a colon-separated list of directories and the helper scripts will append them to `LD_LIBRARY_PATH` during configure, build, and run.
+
+The container wrapper expects the uniqFEED base image to already exist locally. This FFmpeg repository does not build that base image; it only runs against the tag configured by `UF_BASE_IMAGE`.
 
 The container-based workflow avoids polluting the host with pinned uniqFEED dependencies such as gRPC, Vulkan runtime pieces, Boost 1.74, hiredis 0.14, and other bundled libraries.
 
@@ -164,6 +186,15 @@ That script installs the FFmpeg build tools it needs inside the disposable conta
 and then builds:
 
 - `doc/examples/transcoding`
+
+The helper keeps repeated rebuilds incremental. It only drops existing `*.o` and `*.d` files when the uniqFEED-related build configuration changes, which preserves the stale-dependency workaround without forcing a full rebuild on every invocation.
+
+If you need to force a cold rebuild anyway, pass `--clean` to the helper or wrapper:
+
+```sh
+tools/build-uniqfeed-example.sh --clean
+tools/uniqfeed-container.sh build --clean
+```
 
 If you need extra FFmpeg configure flags, append them after the script name:
 

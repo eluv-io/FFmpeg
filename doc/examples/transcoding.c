@@ -161,14 +161,15 @@ static int set_encoder_channel_layout(AVCodecContext *enc_ctx, const AVCodecCont
 #endif
 
 #ifdef USE_UF_RENDERLIB
-#define UF_RENDERLIB_EXPECTED_WIDTH 1280
-#define UF_RENDERLIB_EXPECTED_HEIGHT 720
-
 typedef struct RenderLibContext {
     UfContext *ctx;
     const char *metadata_dir;
     uint64_t *video_frame_count;
     uint64_t metadata_frame_count;
+    uint32_t expected_width;
+    uint32_t expected_height;
+    uint32_t context_nframes;
+    uint32_t context_duration_s;
     int passthrough_on_failure;
     int render_disabled;
 } RenderLibContext;
@@ -438,11 +439,11 @@ static int process_video_frame_with_renderlib(AVFrame *frame, unsigned int strea
 
     *processed_frame = NULL;
 
-    if (frame->width != UF_RENDERLIB_EXPECTED_WIDTH ||
-        frame->height != UF_RENDERLIB_EXPECTED_HEIGHT) {
+    if (frame->width != (int)renderlib_ctx.expected_width ||
+        frame->height != (int)renderlib_ctx.expected_height) {
         av_log(NULL, AV_LOG_ERROR,
                "uniqFEED requires filtered video frames to be exactly %dx%d; got %dx%d on stream #%u\n",
-               UF_RENDERLIB_EXPECTED_WIDTH, UF_RENDERLIB_EXPECTED_HEIGHT,
+               renderlib_ctx.expected_width, renderlib_ctx.expected_height,
                frame->width, frame->height, stream_index);
         return AVERROR(EINVAL);
     }
@@ -513,6 +514,25 @@ static int init_renderlib(int argc, char **argv)
         return AVERROR_EXTERNAL;
     }
 
+    if (uFGetContextResolution(renderlib_ctx.ctx,
+                               &renderlib_ctx.expected_width,
+                               &renderlib_ctx.expected_height) != 0) {
+        av_log(NULL, AV_LOG_ERROR,
+               "Failed to query uniqFEED context resolution\n");
+        uFDestroyContext(renderlib_ctx.ctx);
+        renderlib_ctx.ctx = NULL;
+        return AVERROR_EXTERNAL;
+    }
+
+    if (uFGetContextFramerate(renderlib_ctx.ctx,
+                              &renderlib_ctx.context_nframes,
+                              &renderlib_ctx.context_duration_s) != 0) {
+        av_log(NULL, AV_LOG_WARNING,
+               "Failed to query uniqFEED context frame rate; continuing without it\n");
+        renderlib_ctx.context_nframes = 0;
+        renderlib_ctx.context_duration_s = 0;
+    }
+
     renderlib_ctx.metadata_dir = argv[4];
     renderlib_ctx.metadata_frame_count = count_render_metadata_frames(renderlib_ctx.metadata_dir);
     renderlib_ctx.passthrough_on_failure = env_flag_enabled("UF_RENDERLIB_PASSTHROUGH_ON_FAILURE");
@@ -528,6 +548,17 @@ static int init_renderlib(int argc, char **argv)
     if (renderlib_ctx.passthrough_on_failure) {
         av_log(NULL, AV_LOG_INFO,
                "uniqFEED passthrough-on-failure enabled; recoverable render errors will disable uniqFEED and continue with original frames\n");
+    }
+
+    if (renderlib_ctx.context_nframes > 0 && renderlib_ctx.context_duration_s > 0) {
+        av_log(NULL, AV_LOG_INFO,
+               "uniqFEED context initialized with native resolution %ux%u and frame rate %u/%u fps\n",
+               renderlib_ctx.expected_width, renderlib_ctx.expected_height,
+               renderlib_ctx.context_nframes, renderlib_ctx.context_duration_s);
+    } else {
+        av_log(NULL, AV_LOG_INFO,
+               "uniqFEED context initialized with native resolution %ux%u\n",
+               renderlib_ctx.expected_width, renderlib_ctx.expected_height);
     }
 
     if (renderlib_ctx.metadata_frame_count > 0) {
@@ -551,6 +582,10 @@ static void free_renderlib(void)
     renderlib_ctx.ctx = NULL;
     renderlib_ctx.metadata_dir = NULL;
     renderlib_ctx.metadata_frame_count = 0;
+    renderlib_ctx.expected_width = 0;
+    renderlib_ctx.expected_height = 0;
+    renderlib_ctx.context_nframes = 0;
+    renderlib_ctx.context_duration_s = 0;
     renderlib_ctx.passthrough_on_failure = 0;
     renderlib_ctx.render_disabled = 0;
 }
