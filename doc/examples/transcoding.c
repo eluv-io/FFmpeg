@@ -65,6 +65,7 @@ static FilteringContext *filter_ctx;
 typedef struct StreamContext {
     AVCodecContext *dec_ctx;
     AVCodecContext *enc_ctx;
+    int            out_stream_index; /* index in ofmt_ctx->streams, or -1 if dropped */
 } StreamContext;
 static StreamContext *stream_ctx;
 
@@ -616,8 +617,12 @@ static int open_input_file(const char *filename)
         AVCodec *dec = avcodec_find_decoder(stream->codecpar->codec_id);
         AVCodecContext *codec_ctx;
         if (!dec) {
-            av_log(NULL, AV_LOG_ERROR, "Failed to find decoder for stream #%u\n", i);
-            return AVERROR_DECODER_NOT_FOUND;
+            if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ||
+                    stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+                av_log(NULL, AV_LOG_ERROR, "Failed to find decoder for stream #%u\n", i);
+                return AVERROR_DECODER_NOT_FOUND;
+            }
+            av_log(NULL, AV_LOG_WARNING, "No decoder found for stream #%u, will remux\n", i);
         }
         codec_ctx = avcodec_alloc_context3(dec);
         if (!codec_ctx) {
@@ -649,6 +654,36 @@ static int open_input_file(const char *filename)
     return 0;
 }
 
+/**
+ * Find an encoder for the given codec_id, preferring software encoders over
+ * hardware-only ones (e.g. v4l2m2m, nvenc) that may not be available in all
+ * environments.
+ */
+static const AVCodec *find_preferred_encoder(enum AVCodecID codec_id)
+{
+    const AVCodec *codec = avcodec_find_encoder(codec_id);
+    if (codec && !(codec->capabilities & AV_CODEC_CAP_HARDWARE))
+        return codec;
+    /* Default was a hardware encoder; scan for a software alternative. */
+    void *opaque = NULL;
+    const AVCodec *c;
+    while ((c = av_codec_iterate(&opaque))) {
+        if (!av_codec_is_encoder(c) || c->id != codec_id)
+            continue;
+        if (!(c->capabilities & AV_CODEC_CAP_HARDWARE))
+            return c;
+    }
+    /* No software encoder for this codec; fall back to mpeg4 which is always
+     * available as a built-in software encoder. */
+    if (codec_id != AV_CODEC_ID_MPEG4) {
+        av_log(NULL, AV_LOG_WARNING,
+               "No software encoder found for %s, falling back to mpeg4\n",
+               avcodec_get_name(codec_id));
+        return avcodec_find_encoder(AV_CODEC_ID_MPEG4);
+    }
+    return codec;
+}
+
 static int open_output_file(const char *filename)
 {
     AVStream *out_stream;
@@ -667,19 +702,30 @@ static int open_output_file(const char *filename)
 
 
     for (i = 0; i < ifmt_ctx->nb_streams; i++) {
+        in_stream = ifmt_ctx->streams[i];
+        dec_ctx = stream_ctx[i].dec_ctx;
+        stream_ctx[i].out_stream_index = -1;
+
+        /* Only create output streams for audio/video; drop data/timecode/etc. */
+        if (dec_ctx->codec_type != AVMEDIA_TYPE_VIDEO &&
+                dec_ctx->codec_type != AVMEDIA_TYPE_AUDIO) {
+            av_log(NULL, AV_LOG_INFO,
+                   "Dropping stream #%u (type %d) from output\n",
+                   i, dec_ctx->codec_type);
+            continue;
+        }
+
         out_stream = avformat_new_stream(ofmt_ctx, NULL);
         if (!out_stream) {
             av_log(NULL, AV_LOG_ERROR, "Failed allocating output stream\n");
             return AVERROR_UNKNOWN;
         }
-
-        in_stream = ifmt_ctx->streams[i];
-        dec_ctx = stream_ctx[i].dec_ctx;
+        stream_ctx[i].out_stream_index = out_stream->index;
 
         if (dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO
                 || dec_ctx->codec_type == AVMEDIA_TYPE_AUDIO) {
             /* in this example, we choose transcoding to same codec */
-            encoder = avcodec_find_encoder(dec_ctx->codec_id);
+            encoder = find_preferred_encoder(dec_ctx->codec_id);
             if (!encoder) {
                 av_log(NULL, AV_LOG_FATAL, "Necessary encoder not found\n");
                 return AVERROR_INVALIDDATA;
@@ -694,9 +740,15 @@ static int open_output_file(const char *filename)
              * sample rate etc.). These properties can be changed for output
              * streams easily using filters */
             if (dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO) {
+#ifdef USE_UF_RENDERLIB
+                enc_ctx->height = renderlib_ctx.expected_height;
+                enc_ctx->width  = renderlib_ctx.expected_width;
+                enc_ctx->sample_aspect_ratio = dec_ctx->sample_aspect_ratio;
+#else
                 enc_ctx->height = dec_ctx->height;
                 enc_ctx->width = dec_ctx->width;
                 enc_ctx->sample_aspect_ratio = dec_ctx->sample_aspect_ratio;
+#endif
                 /* take first format from list of supported formats */
                 if (encoder->pix_fmts)
                     enc_ctx->pix_fmt = encoder->pix_fmts[0];
@@ -733,17 +785,6 @@ static int open_output_file(const char *filename)
 
             out_stream->time_base = enc_ctx->time_base;
             stream_ctx[i].enc_ctx = enc_ctx;
-        } else if (dec_ctx->codec_type == AVMEDIA_TYPE_UNKNOWN) {
-            av_log(NULL, AV_LOG_FATAL, "Elementary stream #%d is of unknown type, cannot proceed\n", i);
-            return AVERROR_INVALIDDATA;
-        } else {
-            /* if this stream must be remuxed */
-            ret = avcodec_parameters_copy(out_stream->codecpar, in_stream->codecpar);
-            if (ret < 0) {
-                av_log(NULL, AV_LOG_ERROR, "Copying parameters for stream #%u failed\n", i);
-                return ret;
-            }
-            out_stream->time_base = in_stream->time_base;
         }
 
     }
@@ -962,9 +1003,22 @@ static int init_filters(void)
             continue;
 
 
-        if (ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
+        if (ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+#ifdef USE_UF_RENDERLIB
+            char scale_spec[64];
+            AVCodecContext *dec = stream_ctx[i].dec_ctx;
+            if (dec->width  != (int)renderlib_ctx.expected_width ||
+                dec->height != (int)renderlib_ctx.expected_height) {
+                snprintf(scale_spec, sizeof(scale_spec), "scale=%u:%u",
+                         renderlib_ctx.expected_width, renderlib_ctx.expected_height);
+                filter_spec = scale_spec;
+            } else {
+                filter_spec = "null";
+            }
+#else
             filter_spec = "null"; /* passthrough (dummy) filter for video */
-        else
+#endif
+        } else
             filter_spec = "anull"; /* passthrough (dummy) filter for audio */
         ret = init_filter(&filter_ctx[i], stream_ctx[i].dec_ctx,
                 stream_ctx[i].enc_ctx, filter_spec);
@@ -1094,6 +1148,9 @@ static int filter_encode_write_frame(AVFrame *frame, unsigned int stream_index)
         }
 
         filt_frame->pict_type = AV_PICTURE_TYPE_NONE;
+        filt_frame->pts = av_rescale_q(filt_frame->pts,
+                av_buffersink_get_time_base(filter_ctx[stream_index].buffersink_ctx),
+                stream_ctx[stream_index].enc_ctx->time_base);
 #ifdef USE_UF_RENDERLIB
         if (ifmt_ctx->streams[stream_index]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
             !renderlib_ctx.render_disabled) {
@@ -1195,6 +1252,11 @@ int main(int argc, char **argv)
         av_log(NULL, AV_LOG_DEBUG, "Demuxer gave frame of stream_index %u\n",
                 stream_index);
 
+        if (stream_ctx[stream_index].out_stream_index < 0) {
+            av_packet_unref(&packet);
+            continue; /* stream dropped from output */
+        }
+
         if (filter_ctx[stream_index].filter_graph) {
             av_log(NULL, AV_LOG_DEBUG, "Going to reencode&filter the frame\n");
             av_packet_rescale_ts(&packet,
@@ -1205,9 +1267,11 @@ int main(int argc, char **argv)
                 goto end;
         } else {
             /* remux this frame without reencoding */
+            int out_idx = stream_ctx[stream_index].out_stream_index;
+            packet.stream_index = out_idx;
             av_packet_rescale_ts(&packet,
                                  ifmt_ctx->streams[stream_index]->time_base,
-                                 ofmt_ctx->streams[stream_index]->time_base);
+                                 ofmt_ctx->streams[out_idx]->time_base);
 
             ret = av_interleaved_write_frame(ofmt_ctx, &packet);
             if (ret < 0)
