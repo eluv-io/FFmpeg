@@ -1762,6 +1762,11 @@ static int dash_init(AVFormatContext *s)
         st->sample_aspect_ratio = s->streams[i]->sample_aspect_ratio;
         st->time_base = s->streams[i]->time_base;
         st->avg_frame_rate = s->streams[i]->avg_frame_rate;
+
+        /* ELUVIO - propagate stream disposition to the inner mov muxer.
+         * Fixes MV-HEVC DASH outputs (AV_DISPOSITION_MULTILAYER is lost and mov_write_lhvc_tag is skipped)
+         */
+        st->disposition = s->streams[i]->disposition;
         ctx->avoid_negative_ts = s->avoid_negative_ts;
         ctx->flags = s->flags;
 
