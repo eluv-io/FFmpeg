@@ -341,7 +341,7 @@ static int get_frame_filename(char *buf, int buf_size, const char *path, int64_t
     return ff_bprint_get_frame_filename(&bp, path, number, flags) < 0 ? -1 : 0;
 }
 
-int av_get_frame_filename2(char *buf, int buf_size, const char *path, int number, int flags)
+int av_get_frame_filename2(char *buf, int buf_size, const char *path, int64_t number, int flags)
 {
     return get_frame_filename(buf, buf_size, path, number, flags);
 }

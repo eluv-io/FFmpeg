@@ -31,6 +31,13 @@
 
 #define MAX_MBPAIR_SIZE (256*1024) // a tighter bound could be calculated if someone cares about a few bytes
 
+/*
+ * Maximum number of NAL units expected in a single H.264 access unit.
+ * This covers up to MAX_SLICES (32) slice NALs plus overhead for non-slice
+ * NALs (SPS, PPS, AUD, SEI, etc.) that may appear inline in a packet.
+ */
+#define H264_MAX_NAL_UNITS 64
+
 typedef struct H2645NAL {
     const uint8_t *data;
     int size;
@@ -69,6 +76,8 @@ typedef struct H2645NAL {
     int skipped_bytes;
     int skipped_bytes_pos_size;
     int *skipped_bytes_pos;
+
+    int slice_header_len_bits;
 } H2645NAL;
 
 typedef struct H2645RBSP {
