@@ -295,6 +295,7 @@ typedef struct WHIPContext {
      * Note that pion requires a smaller value, for example, 1200.
      */
     int pkt_size;
+    int ts_buffer_size;/* Underlying protocol send/receive buffer size */
     /**
      * The optional Bearer token for WHIP Authorization.
      * See https://www.ietf.org/archive/id/draft-ietf-wish-whip-08.html#name-authentication-and-authoriz
@@ -594,7 +595,7 @@ static int parse_codec(AVFormatContext *s)
  */
 static int generate_sdp_offer(AVFormatContext *s)
 {
-    int ret = 0, profile, level, profile_iop;
+    int ret = 0, profile_idc = 0, level, profile_iop = 0;
     const char *acodec_name = NULL, *vcodec_name = NULL;
     AVBPrint bp;
     WHIPContext *whip = s->priv_data;
@@ -615,7 +616,7 @@ static int generate_sdp_offer(AVFormatContext *s)
         av_lfg_get(&whip->rnd));
 
     whip->audio_ssrc = av_lfg_get(&whip->rnd);
-    whip->video_ssrc = av_lfg_get(&whip->rnd);
+    whip->video_ssrc = whip->audio_ssrc + 1;
 
     whip->audio_payload_type = WHIP_RTP_PAYLOAD_TYPE_OPUS;
     whip->video_payload_type = WHIP_RTP_PAYLOAD_TYPE_H264;
@@ -662,12 +663,12 @@ static int generate_sdp_offer(AVFormatContext *s)
     }
 
     if (whip->video_par) {
-        profile_iop = profile = whip->video_par->profile;
         level = whip->video_par->level;
         if (whip->video_par->codec_id == AV_CODEC_ID_H264) {
             vcodec_name = "H264";
-            profile_iop &= AV_PROFILE_H264_CONSTRAINED;
-            profile &= (~AV_PROFILE_H264_CONSTRAINED);
+            profile_iop |= whip->video_par->profile & AV_PROFILE_H264_CONSTRAINED ? 1 << 6 : 0;
+            profile_iop |= whip->video_par->profile & AV_PROFILE_H264_INTRA ? 1 << 4 : 0;
+            profile_idc = whip->video_par->profile & 0x00ff;
         }
 
         av_bprintf(&bp, ""
@@ -693,7 +694,7 @@ static int generate_sdp_offer(AVFormatContext *s)
             whip->video_payload_type,
             vcodec_name,
             whip->video_payload_type,
-            profile,
+            profile_idc,
             profile_iop,
             level,
             whip->video_ssrc,
@@ -880,12 +881,12 @@ static int parse_answer(AVFormatContext *s)
                 goto end;
             }
         } else if (av_strstart(line, "a=candidate:", &ptr) && !whip->ice_protocol) {
-            ptr = av_stristr(ptr, "udp");
             if (ptr && av_stristr(ptr, "host")) {
-                char protocol[17], host[129];
-                int priority, port;
-                ret = sscanf(ptr, "%16s %d %128s %d typ host", protocol, &priority, host, &port);
-                if (ret != 4) {
+                /* Refer to RFC 5245 15.1 */
+                char foundation[33], protocol[17], host[129];
+                int component_id, priority, port;
+                ret = sscanf(ptr, "%32s %d %16s %d %128s %d typ host", foundation, &component_id, protocol, &priority, host, &port);
+                if (ret != 6) {
                     av_log(whip, AV_LOG_ERROR, "Failed %d to parse line %d %s from %s\n",
                         ret, i, line, whip->sdp_answer);
                     ret = AVERROR(EIO);
@@ -1195,8 +1196,9 @@ static int udp_connect(AVFormatContext *s)
 
     av_dict_set_int(&opts, "connect", 1, 0);
     av_dict_set_int(&opts, "fifo_size", 0, 0);
-    /* Set the max packet size to the buffer size. */
+    /* Pass through the pkt_size and buffer_size to underling protocol */
     av_dict_set_int(&opts, "pkt_size", whip->pkt_size, 0);
+    av_dict_set_int(&opts, "buffer_size", whip->ts_buffer_size, 0);
 
     ret = ffurl_open_whitelist(&whip->udp, url, AVIO_FLAG_WRITE, &s->interrupt_callback,
         &opts, s->protocol_whitelist, s->protocol_blacklist, NULL);
@@ -1815,8 +1817,10 @@ static int whip_write_packet(AVFormatContext *s, AVPacket *pkt)
         if (ret == AVERROR(EINVAL)) {
             av_log(whip, AV_LOG_WARNING, "Ignore failed to write packet=%dB, ret=%d\n", pkt->size, ret);
             ret = 0;
+        } else if (ret == AVERROR(EAGAIN)) {
+            av_log(whip, AV_LOG_ERROR, "UDP send blocked, please increase the buffer via -ts_buffer_size\n");
         } else
-            av_log(whip, AV_LOG_ERROR, "Failed to write packet, size=%d\n", pkt->size);
+            av_log(whip, AV_LOG_ERROR, "Failed to write packet, size=%d, ret=%d\n", pkt->size, ret);
         goto end;
     }
 
@@ -1898,6 +1902,7 @@ static int whip_check_bitstream(AVFormatContext *s, AVStream *st, const AVPacket
 static const AVOption options[] = {
     { "handshake_timeout",  "Timeout in milliseconds for ICE and DTLS handshake.",      OFFSET(handshake_timeout),  AV_OPT_TYPE_INT,    { .i64 = 5000 },    -1, INT_MAX, ENC },
     { "pkt_size",           "The maximum size, in bytes, of RTP packets that send out", OFFSET(pkt_size),           AV_OPT_TYPE_INT,    { .i64 = 1200 },    -1, INT_MAX, ENC },
+    { "ts_buffer_size",     "The buffer size, in bytes, of underlying protocol",        OFFSET(ts_buffer_size),        AV_OPT_TYPE_INT,    { .i64 = -1 },      -1, INT_MAX, ENC },
     { "authorization",      "The optional Bearer token for WHIP Authorization",         OFFSET(authorization),      AV_OPT_TYPE_STRING, { .str = NULL },     0,       0, ENC },
     { "cert_file",          "The optional certificate file path for DTLS",              OFFSET(cert_file),          AV_OPT_TYPE_STRING, { .str = NULL },     0,       0, ENC },
     { "key_file",           "The optional private key file path for DTLS",              OFFSET(key_file),      AV_OPT_TYPE_STRING, { .str = NULL },     0,       0, ENC },

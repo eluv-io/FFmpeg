@@ -1,11 +1,14 @@
+name: Lint
+
 on:
   push:
     branches:
-      - master
+      - release/8.0
   pull_request:
 
 jobs:
   lint:
+    name: Pre-Commit
     runs-on: utilities
     steps:
       - name: Checkout

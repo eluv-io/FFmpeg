@@ -267,7 +267,7 @@ static AVBufferRef *d3d12va_pool_alloc(void *opaque, size_t size)
     if (!frame->sync_ctx.event)
         goto fail;
 
-    buf = av_buffer_create((uint8_t *)frame, sizeof(frame), free_texture, NULL, 0);
+    buf = av_buffer_create((uint8_t *)frame, sizeof(*frame), free_texture, NULL, 0);
     if (!buf)
         goto fail;
 
@@ -660,7 +660,7 @@ static int d3d12va_device_create(AVHWDeviceContext *hwdev, const char *device,
             DXGI_ADAPTER_DESC desc;
             hr = IDXGIAdapter2_GetDesc(pAdapter, &desc);
             if (!FAILED(hr)) {
-                av_log(ctx, AV_LOG_INFO, "Using device %04x:%04x (%ls).\n",
+                av_log(hwdev, AV_LOG_INFO, "Using device %04x:%04x (%ls).\n",
                        desc.VendorId, desc.DeviceId, desc.Description);
             }
         }
@@ -668,7 +668,7 @@ static int d3d12va_device_create(AVHWDeviceContext *hwdev, const char *device,
         hr = priv->create_device((IUnknown *)pAdapter, D3D_FEATURE_LEVEL_12_0, &IID_ID3D12Device, (void **)&ctx->device);
         D3D12_OBJECT_RELEASE(pAdapter);
         if (FAILED(hr)) {
-            av_log(ctx, AV_LOG_ERROR, "Failed to create Direct 3D 12 device (%lx)\n", (long)hr);
+            av_log(hwdev, AV_LOG_ERROR, "Failed to create Direct 3D 12 device (%lx)\n", (long)hr);
             return AVERROR_UNKNOWN;
         }
     }

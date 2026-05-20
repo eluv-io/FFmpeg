@@ -251,7 +251,7 @@ static int64_t get_duration(AVFormatContext *s)
     unsigned date;
     int64_t size = avio_size(s->pb);
 
-    if (start_pos + 20 > size)
+    if (start_pos < 0 || start_pos > size - 20)
         return 0;
 
     avio_skip(s->pb, 16);
@@ -325,7 +325,9 @@ static int dhav_read_header(AVFormatContext *s)
                 if (seek_back < 9)
                     break;
                 dhav->last_good_pos = avio_tell(s->pb);
-                avio_seek(s->pb, -seek_back, SEEK_CUR);
+                int64_t ret64 = avio_seek(s->pb, -seek_back, SEEK_CUR);
+                if (ret64 < 0)
+                    return ret64;
             }
             avio_seek(s->pb, dhav->last_good_pos, SEEK_SET);
         }
