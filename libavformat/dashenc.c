@@ -2514,6 +2514,13 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
 
         if ((ret = dash_flush(s, 0, pkt->stream_index)) < 0)
             return ret;
+
+        /* ELUVIO - Mark the next MP4 fragment discontinuous so movenc preserves the incoming packet PTS.
+         * When source MP4 has bframes, deriving the first PTS of next fragment is incorrect.
+         */
+        if (os->segment_type == SEGMENT_TYPE_MP4 &&
+            (ret = av_opt_set(os->ctx->priv_data, "movflags", "+frag_discont", 0)) < 0)
+            return ret;
     }
 
     if (!os->packets_written) {
