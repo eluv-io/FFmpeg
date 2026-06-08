@@ -1862,6 +1862,14 @@ static int dash_init(AVFormatContext *s)
                         av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov", 0);
                     }
                 }
+                /* ELUVIO - for DASH segments with start_segment > 1 (mez part 2 onward) and source mez with bframes and
+                 * CTS > 0 (eg. first frame DTS=0 PTS=1536) movenc shifts tfdt PTS by the first CTS offset.
+                 * Setting 'use_editlist=0' causes movenc to pass through the source DTS/PTS and just adjust
+                 * segment number and start pts.
+                 */
+                if (c->start_segment > 1) {
+                    av_dict_set(&opts, "use_editlist", "0", 0);
+                }
             }
 
             if (c->start_fragment_index > 1) {
@@ -2516,7 +2524,7 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
             return ret;
 
         /* ELUVIO - Mark the next MP4 fragment discontinuous so movenc preserves the incoming packet PTS.
-         * When source MP4 has bframes, deriving the first PTS of next fragment is incorrect.
+         * When source MP4 has bframes, deriving the first PTS of next segment is incorrect.
          */
         if (os->segment_type == SEGMENT_TYPE_MP4 &&
             (ret = av_opt_set(os->ctx->priv_data, "movflags", "+frag_discont", 0)) < 0)
