@@ -1867,7 +1867,9 @@ static int dash_init(AVFormatContext *s)
                  * Setting 'use_editlist=0' causes movenc to pass through the source DTS/PTS and just adjust
                  * segment number and start pts.
                  */
-                if (c->start_segment > 1) {
+                if (c->start_segment > 1 &&
+                    st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
+                    st->codecpar->video_delay > 0) {
                     av_dict_set(&opts, "use_editlist", "0", 0);
                 }
             }
@@ -2527,6 +2529,8 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
          * When source MP4 has bframes, deriving the first PTS of next segment is incorrect.
          */
         if (os->segment_type == SEGMENT_TYPE_MP4 &&
+            st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
+            st->codecpar->video_delay > 0 &&
             (ret = av_opt_set(os->ctx->priv_data, "movflags", "+frag_discont", 0)) < 0)
             return ret;
     }
