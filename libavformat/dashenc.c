@@ -227,6 +227,7 @@ typedef struct DASHContext {
 
     int64_t seg_duration_ts;
     int64_t start_fragment_index;
+    int avpipe_bypass_bframes;
 
     // Pass-through options to movenc -PTT
     char *encryption_scheme_str;
@@ -1867,10 +1868,14 @@ static int dash_init(AVFormatContext *s)
                  * Setting 'use_editlist=0' causes movenc to pass through the source DTS/PTS and just adjust
                  * segment number and start pts.
                  */
-                if (c->start_segment > 1 &&
-                    st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
-                    st->codecpar->video_delay > 0) {
+                if (c->avpipe_bypass_bframes &&
+                    c->start_segment > 1 &&
+                    st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                    av_log(s, AV_LOG_INFO, "ELUVIO avpipe bypass bframes = 1 setting use_editlist=0\n");
                     av_dict_set(&opts, "use_editlist", "0", 0);
+                } else if (st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                    av_log(s, AV_LOG_INFO, "ELUVIO avpipe bypass bframes = %d not setting use_editlist=0\n",
+                           c->avpipe_bypass_bframes);
                 }
             }
 
@@ -2529,10 +2534,15 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
          * When source MP4 has bframes, deriving the first PTS of next segment is incorrect.
          */
         if (os->segment_type == SEGMENT_TYPE_MP4 &&
-            st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
-            st->codecpar->video_delay > 0 &&
-            (ret = av_opt_set(os->ctx->priv_data, "movflags", "+frag_discont", 0)) < 0)
-            return ret;
+            st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            if (c->avpipe_bypass_bframes) {
+                av_log(s, AV_LOG_INFO, "ELUVIO avpipe bypass bframes = 1 setting frag_discont after flush\n");
+                if ((ret = av_opt_set(os->ctx->priv_data, "movflags", "+frag_discont", 0)) < 0)
+                    return ret;
+            } else {
+                av_log(s, AV_LOG_INFO, "ELUVIO avpipe bypass bframes = 0 not setting frag_discont after flush\n");
+            }
+        }
     }
 
     if (!os->packets_written) {
@@ -2759,6 +2769,7 @@ static const AVOption options[] = {
     { "seg_duration_ts", "segment duration timebase", OFFSET(seg_duration_ts), AV_OPT_TYPE_INT64, { .i64 = 48048 }, 0, INT64_MAX, E },
     { "start_fragment_index", "starting frame sequence for fragmented mp4", OFFSET(start_fragment_index), AV_OPT_TYPE_INT64, { .i64 = 0 }, 0, INT64_MAX, E },
     { "start_segment", "Specify the index of the first segment (which by default is 1)", OFFSET(start_segment), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, INT_MAX, E },
+    { "avpipe_bypass_bframes", "Preserve avpipe bypass timestamps for video with B-frame reordering", OFFSET(avpipe_bypass_bframes), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
     { "encryption_scheme", "Configures the Common Encryption scheme, allowed values are none, cenc-aes-ctr, cenc-aes-cbc-pattern", OFFSET(encryption_scheme_str), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "encryption_key", "The media encryption key (hex)", OFFSET(encryption_key), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "encryption_kid", "The media encryption key identifier (hex)", OFFSET(encryption_kid), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
