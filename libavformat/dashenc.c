@@ -227,6 +227,7 @@ typedef struct DASHContext {
 
     int64_t seg_duration_ts;
     int64_t start_fragment_index;
+    int avpipe_bypass_bframes;
 
     // Pass-through options to movenc -PTT
     char *encryption_scheme_str;
@@ -1862,6 +1863,17 @@ static int dash_init(AVFormatContext *s)
                         av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov", 0);
                     }
                 }
+                /* ELUVIO - for DASH segments with start_segment > 1 (mez part 2 onward) and source mez with bframes and
+                 * CTS > 0 (eg. first frame DTS=0 PTS=1536) movenc shifts tfdt PTS by the first CTS offset.
+                 * Setting 'use_editlist=0' causes movenc to pass through the source DTS/PTS and just adjust
+                 * segment number and start pts.
+                 */
+                if (c->avpipe_bypass_bframes &&
+                    c->start_segment > 1 &&
+                    st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                    av_dict_set(&opts, "use_editlist", "0", 0);
+                    ctx->avoid_negative_ts = AVFMT_AVOID_NEG_TS_DISABLED;
+                }
             }
 
             if (c->start_fragment_index > 1) {
@@ -2514,6 +2526,16 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
 
         if ((ret = dash_flush(s, 0, pkt->stream_index)) < 0)
             return ret;
+
+        /* ELUVIO - Mark the next MP4 fragment discontinuous so movenc preserves the incoming packet PTS.
+         * When source MP4 has bframes, deriving the first PTS of next segment is incorrect.
+         */
+        if (c->avpipe_bypass_bframes &&
+            os->segment_type == SEGMENT_TYPE_MP4 &&
+            st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            if ((ret = av_opt_set(os->ctx->priv_data, "movflags", "+frag_discont", 0)) < 0)
+                return ret;
+        }
     }
 
     if (!os->packets_written) {
@@ -2740,6 +2762,7 @@ static const AVOption options[] = {
     { "seg_duration_ts", "segment duration timebase", OFFSET(seg_duration_ts), AV_OPT_TYPE_INT64, { .i64 = 48048 }, 0, INT64_MAX, E },
     { "start_fragment_index", "starting frame sequence for fragmented mp4", OFFSET(start_fragment_index), AV_OPT_TYPE_INT64, { .i64 = 0 }, 0, INT64_MAX, E },
     { "start_segment", "Specify the index of the first segment (which by default is 1)", OFFSET(start_segment), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, INT_MAX, E },
+    { "avpipe_bypass_bframes", "Preserve avpipe bypass timestamps for video with B-frame reordering", OFFSET(avpipe_bypass_bframes), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
     { "encryption_scheme", "Configures the Common Encryption scheme, allowed values are none, cenc-aes-ctr, cenc-aes-cbc-pattern", OFFSET(encryption_scheme_str), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "encryption_key", "The media encryption key (hex)", OFFSET(encryption_key), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { "encryption_kid", "The media encryption key identifier (hex)", OFFSET(encryption_kid), AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
