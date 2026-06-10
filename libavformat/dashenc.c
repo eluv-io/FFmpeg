@@ -1873,6 +1873,7 @@ static int dash_init(AVFormatContext *s)
                     st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
                     av_log(s, AV_LOG_INFO, "ELUVIO avpipe bypass bframes = 1 setting use_editlist=0\n");
                     av_dict_set(&opts, "use_editlist", "0", 0);
+                    ctx->avoid_negative_ts = AVFMT_AVOID_NEG_TS_DISABLED;
                 } else if (st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
                     av_log(s, AV_LOG_INFO, "ELUVIO avpipe bypass bframes = %d not setting use_editlist=0\n",
                            c->avpipe_bypass_bframes);
