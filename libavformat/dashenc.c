@@ -1871,12 +1871,8 @@ static int dash_init(AVFormatContext *s)
                 if (c->avpipe_bypass_bframes &&
                     c->start_segment > 1 &&
                     st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-                    av_log(s, AV_LOG_INFO, "ELUVIO avpipe bypass bframes = 1 setting use_editlist=0\n");
                     av_dict_set(&opts, "use_editlist", "0", 0);
                     ctx->avoid_negative_ts = AVFMT_AVOID_NEG_TS_DISABLED;
-                } else if (st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-                    av_log(s, AV_LOG_INFO, "ELUVIO avpipe bypass bframes = %d not setting use_editlist=0\n",
-                           c->avpipe_bypass_bframes);
                 }
             }
 
@@ -2534,15 +2530,11 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
         /* ELUVIO - Mark the next MP4 fragment discontinuous so movenc preserves the incoming packet PTS.
          * When source MP4 has bframes, deriving the first PTS of next segment is incorrect.
          */
-        if (os->segment_type == SEGMENT_TYPE_MP4 &&
+        if (c->avpipe_bypass_bframes &&
+            os->segment_type == SEGMENT_TYPE_MP4 &&
             st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-            if (c->avpipe_bypass_bframes) {
-                av_log(s, AV_LOG_INFO, "ELUVIO avpipe bypass bframes = 1 setting frag_discont after flush\n");
-                if ((ret = av_opt_set(os->ctx->priv_data, "movflags", "+frag_discont", 0)) < 0)
-                    return ret;
-            } else {
-                av_log(s, AV_LOG_INFO, "ELUVIO avpipe bypass bframes = 0 not setting frag_discont after flush\n");
-            }
+            if ((ret = av_opt_set(os->ctx->priv_data, "movflags", "+frag_discont", 0)) < 0)
+                return ret;
         }
     }
 
