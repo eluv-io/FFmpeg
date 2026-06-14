@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-if [[ ! -x ./doc/examples/transcoding ]]; then
-    echo "doc/examples/transcoding is not built yet. Run tools/build-uniqfeed-example.sh first." >&2
+if [[ ! -x ./doc/examples/transcode ]]; then
+    echo "doc/examples/transcode is not built yet. Run tools/build-uniqfeed-example.sh first." >&2
     exit 1
 fi
 
@@ -17,4 +17,4 @@ if [[ -n "${extra_runtime_lib_dirs}" ]]; then
 fi
 export LD_LIBRARY_PATH="${runtime_ld_path}:${LD_LIBRARY_PATH:-}"
 
-exec ./doc/examples/transcoding "$@"
+exec ./doc/examples/transcode "$@"

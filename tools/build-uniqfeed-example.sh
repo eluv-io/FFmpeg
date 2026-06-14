@@ -118,4 +118,4 @@ fi
 
 mv "${new_build_config_file}" "${build_config_file}"
 
-make -j"$(nproc)" doc/examples/transcoding
+make -j"$(nproc)" doc/examples/transcode
