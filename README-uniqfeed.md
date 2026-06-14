@@ -319,6 +319,12 @@ When built with uniqFEED enabled, the example usage is:
 ./transcoding input output project_path metadata_dir
 ```
 
+Optional runtime behavior can be enabled with:
+
+```sh
+UF_RENDERLIB_PASSTHROUGH_ON_FAILURE=1
+```
+
 Arguments:
 
 1. `input`
@@ -327,6 +333,17 @@ Arguments:
 4. `metadata_dir`
 
 The usage string is defined in [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L958).
+
+With `UF_RENDERLIB_PASSTHROUGH_ON_FAILURE=1`, the example treats recoverable uniqFEED errors as a signal to disable uniqFEED for the rest of the run and continue encoding the original filtered frames.
+
+The current integration also enforces a hard frame-size guard before calling uniqFEED: the filtered video frame must be exactly `1280x720`. Any other size is rejected before metadata lookup or renderer invocation.
+
+Example with the container wrapper:
+
+```sh
+UF_RENDERLIB_PASSTHROUGH_ON_FAILURE=1 \
+tools/uniqfeed-container.sh run input.mp4 output.mp4 /runtime/project /path/to/metadata_dir
+```
 
 
 ## Metadata Convention
@@ -438,6 +455,8 @@ The hook site is [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/
 - There is no abstraction layer yet for alternate metadata sources.
 - There is no dedicated FFmpeg filter implementation in `libavfilter`.
 - The example assumes uniqFEED accepts RGB input and returns an image that can be converted back to the source frame format.
+- The current bundled uniqFEED project is guarded to only run on filtered video frames that are exactly `1280x720`.
+- `UF_RENDERLIB_PASSTHROUGH_ON_FAILURE=1` only helps for recoverable errors returned through the uniqFEED API. It cannot recover if the uniqFEED library aborts the process internally, such as the observed `Matting.cpp` fail-fast path.
 
 
 ## Likely Next Steps
