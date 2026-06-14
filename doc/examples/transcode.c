@@ -453,8 +453,8 @@ static int init_renderlib(int argc, char **argv)
     renderlib_ctx.metadata_frame_count = count_render_metadata_frames(renderlib_ctx.metadata_dir);
     renderlib_ctx.passthrough_on_failure = env_flag_enabled("UF_RENDERLIB_PASSTHROUGH_ON_FAILURE");
     renderlib_ctx.render_disabled = 0;
-    renderlib_ctx.video_frame_count = av_mallocz_array(ifmt_ctx->nb_streams,
-                                                       sizeof(*renderlib_ctx.video_frame_count));
+    renderlib_ctx.video_frame_count = av_calloc(ifmt_ctx->nb_streams,
+                                               sizeof(*renderlib_ctx.video_frame_count));
     if (!renderlib_ctx.video_frame_count) {
         uFDestroyContext(renderlib_ctx.ctx);
         renderlib_ctx.ctx = NULL;
