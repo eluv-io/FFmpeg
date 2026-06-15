@@ -36,14 +36,14 @@ Primary code location:
 
 Important uniqFEED entry points in the example:
 
-- render context state: [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L129)
-- AVFrame to uniqFEED image conversion: [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L137)
-- example metadata loading: [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L181)
-- uniqFEED image back to AVFrame conversion: [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L242)
-- per-frame uniqFEED processing function: [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L326)
-- uniqFEED initialization: [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L377)
-- modern decode loop: [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L823)
-- filter/encode loop where uniqFEED is invoked: [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L861)
+- render context state: [doc/examples/transcoding.c](doc/examples/transcoding.c#L129)
+- AVFrame to uniqFEED image conversion: [doc/examples/transcoding.c](doc/examples/transcoding.c#L137)
+- example metadata loading: [doc/examples/transcoding.c](doc/examples/transcoding.c#L181)
+- uniqFEED image back to AVFrame conversion: [doc/examples/transcoding.c](doc/examples/transcoding.c#L242)
+- per-frame uniqFEED processing function: [doc/examples/transcoding.c](doc/examples/transcoding.c#L326)
+- uniqFEED initialization: [doc/examples/transcoding.c](doc/examples/transcoding.c#L377)
+- modern decode loop: [doc/examples/transcoding.c](doc/examples/transcoding.c#L823)
+- filter/encode loop where uniqFEED is invoked: [doc/examples/transcoding.c](doc/examples/transcoding.c#L861)
 
 
 ## Build Assumptions
@@ -78,14 +78,14 @@ The most reliable way to work with this example is to build it inside the uniqFE
 
 This branch now includes:
 
-- [.env](/home/jan/ELV/FFmpeg/.env)
-- [docker/uniqfeed-ffmpeg/Dockerfile](/home/jan/ELV/FFmpeg/docker/uniqfeed-ffmpeg/Dockerfile)
-- [docker-compose.uniqfeed.yml](/home/jan/ELV/FFmpeg/docker-compose.uniqfeed.yml)
-- [tools/build-uniqfeed-example.sh](/home/jan/ELV/FFmpeg/tools/build-uniqfeed-example.sh)
-- [tools/run-uniqfeed-example.sh](/home/jan/ELV/FFmpeg/tools/run-uniqfeed-example.sh)
-- [tools/uniqfeed-container.sh](/home/jan/ELV/FFmpeg/tools/uniqfeed-container.sh)
+- [.env](.env)
+- [docker/uniqfeed-ffmpeg/Dockerfile](docker/uniqfeed-ffmpeg/Dockerfile)
+- [docker-compose.uniqfeed.yml](docker-compose.uniqfeed.yml)
+- [tools/build-uniqfeed-example.sh](tools/build-uniqfeed-example.sh)
+- [tools/run-uniqfeed-example.sh](tools/run-uniqfeed-example.sh)
+- [tools/uniqfeed-container.sh](tools/uniqfeed-container.sh)
 
-The primary workflow uses the existing uniqFEED runtime image directly through [docker-compose.uniqfeed.yml](/home/jan/ELV/FFmpeg/docker-compose.uniqfeed.yml).
+The primary workflow uses the existing uniqFEED runtime image directly through [docker-compose.uniqfeed.yml](docker-compose.uniqfeed.yml).
 
 These files assume you already have the uniqFEED container image available locally.
 
@@ -95,7 +95,7 @@ On this machine, the discovered local tag is:
 uf_render_interface:ubuntu_22
 ```
 
-That default is now stored in the repo-root [.env](/home/jan/ELV/FFmpeg/.env) file.
+That default is now stored in the repo-root [.env](.env) file.
 
 The wrapper script reads `.env` automatically. If your local image uses a different tag, either edit `.env` or override `UF_BASE_IMAGE` on the command line.
 
@@ -113,7 +113,7 @@ cd /path/to/tnt-uniqfeed
 docker build -t uf_render_interface:ubuntu_22 .
 ```
 
-If you want the FFmpeg container workflow to use a sibling checkout such as `/home/jan/src/tnt-uniqfeed` instead of the runtime bundled at `/runtime`, set `UF_RUNTIME_ROOT` to that absolute path before invoking the wrapper script. The script will bind-mount that path into the container and build/run against its `include` and `lib` directories.
+If you want the FFmpeg container workflow to use a sibling checkout such as `/path/to/tnt-uniqfeed` instead of the runtime bundled at `/runtime`, set `UF_RUNTIME_ROOT` to that absolute path before invoking the wrapper script. The script will bind-mount that path into the container and build/run against its `include` and `lib` directories.
 
 If your uniqFEED runtime depends on additional shared-library directories outside that tree, set `UF_RUNTIME_EXTRA_LIB_DIRS` to a colon-separated list of directories and the helper scripts will append them to `LD_LIBRARY_PATH` during configure, build, and run.
 
@@ -131,7 +131,7 @@ There are two layers involved in this workflow:
 
 What must already exist before using this FFmpeg branch:
 
-- the uniqFEED Docker image referenced in [.env](/home/jan/ELV/FFmpeg/.env)
+- the uniqFEED Docker image referenced in [.env](.env)
 
 On this machine, that is:
 
@@ -231,7 +231,7 @@ With the wrapper script:
 tools/uniqfeed-container.sh run input.mp4 output.mp4 /runtime/project /path/to/metadata_dir
 ```
 
-The helper script ensures the uniqFEED shared-library paths are present before launching [doc/examples/transcoding](/home/jan/ELV/FFmpeg/doc/examples/transcoding).
+The helper script ensures the uniqFEED shared-library paths are present before launching [doc/examples/transcoding](doc/examples/transcoding).
 
 To open an interactive shell in the same container environment:
 
@@ -252,7 +252,7 @@ For this uniqFEED variant, the in-tree build is the most straightforward option.
 
 ## Recommended In-Tree Build
 
-The stock FFmpeg examples README says to build FFmpeg first and then run `make examples`. That guidance is in [doc/examples/README](/home/jan/ELV/FFmpeg/doc/examples/README).
+The stock FFmpeg examples README says to build FFmpeg first and then run `make examples`. That guidance is in [doc/examples/README](doc/examples/README).
 
 For the uniqFEED-enabled `transcoding` example, configure FFmpeg with the uniqFEED include path, library path, and compile definition added globally.
 
@@ -277,20 +277,20 @@ make examples
 
 Notes:
 
-- `transcoding` is an FFmpeg example target listed in [doc/examples/Makefile](/home/jan/ELV/FFmpeg/doc/examples/Makefile#L21).
-- the main tree includes the examples makefile from [Makefile](/home/jan/ELV/FFmpeg/Makefile#L98).
+- `transcoding` is an FFmpeg example target listed in [doc/examples/Makefile](doc/examples/Makefile#L21).
+- the main tree includes the examples makefile from [Makefile](Makefile#L98).
 - the `transcoding` example depends on FFmpeg filter/codec/format/util libraries, as declared in `configure`
 - this README uses placeholder library names because the exact uniqFEED artifact names are local-build specific
 
 
 ## Example Build Command
 
-If the uniqFEED project is located at `/home/jan/ELV/tnt-uniqfeed`, the command will likely look conceptually like this:
+If the uniqFEED project is located at `/path/to/tnt-uniqfeed`, the command will likely look conceptually like this:
 
 ```sh
 ./configure \
-  --extra-cflags="-DUSE_UF_RENDERLIB -I/home/jan/ELV/tnt-uniqfeed/include" \
-  --extra-ldflags="-L/home/jan/ELV/tnt-uniqfeed/lib -L/home/jan/ELV/tnt-uniqfeed/lib/uf -L/home/jan/ELV/tnt-uniqfeed/lib/3rdparty" \
+  --extra-cflags="-DUSE_UF_RENDERLIB -I/path/to/tnt-uniqfeed/include" \
+  --extra-ldflags="-L/path/to/tnt-uniqfeed/lib -L/path/to/tnt-uniqfeed/lib/uf -L/path/to/tnt-uniqfeed/lib/3rdparty" \
   --extra-libs="-luf-renderlib" \
   [your existing FFmpeg options]
 
@@ -321,7 +321,7 @@ When built in-tree, the resulting example binary is generated at:
 doc/examples/transcoding
 ```
 
-That target is produced by the examples build rules in [doc/examples/Makefile](/home/jan/ELV/FFmpeg/doc/examples/Makefile).
+That target is produced by the examples build rules in [doc/examples/Makefile](doc/examples/Makefile).
 
 
 ## Common Build Issues
@@ -363,7 +363,7 @@ Arguments:
 3. `project_path`
 4. `metadata_dir`
 
-The usage string is defined in [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L958).
+The usage string is defined in [doc/examples/transcoding.c](doc/examples/transcoding.c#L958).
 
 With `UF_RENDERLIB_PASSTHROUGH_ON_FAILURE=1`, the example treats recoverable uniqFEED errors as a signal to disable uniqFEED for the rest of the run and continue encoding the original filtered frames.
 
@@ -426,7 +426,7 @@ At a high level, the frame flow is:
 5. The returned processed frame replaces the original filtered frame.
 6. The processed frame is encoded and then muxed.
 
-The decode path is in [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L823), and the uniqFEED hook is in [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L901).
+The decode path is in [doc/examples/transcoding.c](doc/examples/transcoding.c#L823), and the uniqFEED hook is in [doc/examples/transcoding.c](doc/examples/transcoding.c#L901).
 
 
 ## In-Memory Image Exchange
@@ -445,8 +445,8 @@ This reduces overhead and keeps the image handoff local to process memory.
 
 The conversion helpers are located at:
 
-- [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L137)
-- [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L242)
+- [doc/examples/transcoding.c](doc/examples/transcoding.c#L137)
+- [doc/examples/transcoding.c](doc/examples/transcoding.c#L242)
 
 
 ## uniqFEED-Specific Flow
@@ -462,7 +462,7 @@ For each filtered video frame:
 7. Convert the returned image back into an FFmpeg frame with the original timing properties.
 8. Encode the resulting frame.
 
-The main uniqFEED work happens in [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L326).
+The main uniqFEED work happens in [doc/examples/transcoding.c](doc/examples/transcoding.c#L326).
 
 
 ## Why the Hook Is in `filter_encode_write_frame`
@@ -475,7 +475,7 @@ That matters because:
 - uniqFEED is intended to behave like a content-aware image augmentation stage.
 - placing it after filtering ensures it sees the same visual frame the encoder will receive.
 
-The hook site is [doc/examples/transcoding.c](/home/jan/ELV/FFmpeg/doc/examples/transcoding.c#L861).
+The hook site is [doc/examples/transcoding.c](doc/examples/transcoding.c#L861).
 
 
 ## Current Limitations
