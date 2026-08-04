@@ -34,6 +34,7 @@
 #include <libavformat/avformat.h>
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
+#include <libavutil/avstring.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/mem.h>
@@ -44,19 +45,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-
-#ifdef USE_UF_RENDERLIB
-#include <libswscale/swscale.h>
-
-/* Forward declarations for opaque types */
-typedef struct UfContext UfContext;
-typedef struct UfImage UfImage;
-typedef struct UfMetadata UfMetadata;
-typedef struct UfFeeds UfFeeds;
-typedef enum UfImageFormat UfImageFormat;
-
-#include <uf/renderlib/UfRenderInterface.h>
-#endif
 
 static AVFormatContext *ifmt_ctx;
 static AVFormatContext *ofmt_ctx;
@@ -79,23 +67,13 @@ typedef struct StreamContext {
 static StreamContext *stream_ctx;
 
 #ifdef USE_UF_RENDERLIB
-typedef struct RenderLibContext {
-    UfContext *ctx;
+typedef struct UniqfeedConfig {
+    const char *project_path;
     const char *metadata_dir;
-    uint64_t *video_frame_count;
-    uint64_t metadata_frame_count;
-    uint32_t expected_width;
-    uint32_t expected_height;
-    uint32_t context_nframes;
-    uint32_t context_duration_s;
     int passthrough_on_failure;
-    int render_disabled;
-    /* Multi-feed support: store all available feeds for a frame */
-    uint32_t *output_feed_counts;
+} UniqfeedConfig;
 
-} RenderLibContext;
-
-static RenderLibContext renderlib_ctx;
+static UniqfeedConfig uniqfeed_cfg;
 
 static int env_flag_enabled(const char *name)
 {
@@ -112,475 +90,21 @@ static int env_flag_enabled(const char *name)
     return 1;
 }
 
-static UfImage *create_render_image_from_frame(const AVFrame *frame)
+static char *build_video_filter_spec(void)
 {
-    struct SwsContext *scale_ctx;
-    UfImage *image;
-    uint8_t *dst_data;
-    uint32_t dst_stride;
-    int ret;
+    if (!uniqfeed_cfg.project_path)
+        return av_asprintf("null");
 
-    image = uFCreateImage(frame->width, frame->height, R8G8B8_UINT);
-    /* Try RGB format first (most compatible) */
-    UfImageFormat fmt = R8G8B8_UINT;
-    
-    image = uFCreateImage(frame->width, frame->height, fmt);
-    if (!image)
-        return NULL;
-
-    ret = uFGetImageHostBuffer(image, (void **)&dst_data);
-    if (ret != 0 || !dst_data) {
-        av_log(NULL, AV_LOG_DEBUG, "uniqFEED: failed to get image host buffer\n");
-        uFDestroyImage(image);
-        return NULL;
+    if (uniqfeed_cfg.metadata_dir) {
+        return av_asprintf("uniqfeed=project_path=%s:metadata_dir=%s:passthrough_on_failure=%d",
+                           uniqfeed_cfg.project_path,
+                           uniqfeed_cfg.metadata_dir,
+                           uniqfeed_cfg.passthrough_on_failure);
     }
 
-    ret = uFGetImageStride(image, &dst_stride);
-    if (ret != 0) {
-        av_log(NULL, AV_LOG_DEBUG, "uniqFEED: failed to get image stride\n");
-        uFDestroyImage(image);
-        return NULL;
-    }
-
-    scale_ctx = sws_getContext(frame->width, frame->height, frame->format,
-                               frame->width, frame->height, AV_PIX_FMT_RGB24,
-                               SWS_BILINEAR, NULL, NULL, NULL);
-    if (!scale_ctx) {
-        av_log(NULL, AV_LOG_ERROR, "uniqFEED: cannot create scale context for format conversion\n");
-        uFDestroyImage(image);
-        return NULL;
-    }
-
-    {
-        uint8_t *rgb_data[4] = { dst_data, NULL, NULL, NULL };
-        int rgb_linesize[4] = { (int)dst_stride, 0, 0, 0 };
-
-        sws_scale(scale_ctx, (const uint8_t * const *)frame->data, frame->linesize,
-                  0, frame->height, rgb_data, rgb_linesize);
-    }
-
-    sws_freeContext(scale_ctx);
-    return image;
-}
-
-static UfMetadata *load_render_metadata(const char *metadata_dir, uint64_t frame_index)
-{
-    FILE *file;
-    UfMetadata *metadata;
-    long metadata_size;
-    char *filename;
-    uint8_t *buffer = NULL;
-    int filename_len;
-
-    filename_len = snprintf(NULL, 0, "%s/md-%06" PRIu64 ".bin",
-                            metadata_dir, frame_index);
-    if (filename_len < 0)
-        return uFCreateMetadata(NULL, 0);
-
-    filename = av_malloc(filename_len + 1);
-    if (!filename)
-        return NULL;
-
-    snprintf(filename, filename_len + 1, "%s/md-%06" PRIu64 ".bin",
-             metadata_dir, frame_index);
-
-    file = fopen(filename, "rb");
-    if (!file) {
-        metadata = uFCreateMetadata(NULL, 0);
-        if (!metadata) {
-            av_log(NULL, AV_LOG_ERROR,
-                   "uniqFEED could not create fallback metadata after missing file %s\n",
-                   filename);
-        }
-        av_free(filename);
-        return metadata;
-         av_log(NULL, AV_LOG_DEBUG,
-             "uniqFEED metadata file not found for frame %" PRIu64 ": %s\n",
-             frame_index, filename);
-         metadata = uFCreateMetadata(NULL, 0);
-         av_free(filename);
-         if (!metadata) {
-             av_log(NULL, AV_LOG_ERROR,
-                 "uniqFEED failed to create fallback (unaltered) metadata for frame %" PRIu64 "\n",
-                 frame_index);
-         }
-         return metadata;
-    }
-
-    if (fseek(file, 0, SEEK_END) < 0) {
-         av_log(NULL, AV_LOG_ERROR,
-             "uniqFEED failed to seek in metadata file %s\n", filename);
-        fclose(file);
-        av_free(filename);
-        return uFCreateMetadata(NULL, 0);
-    }
-
-    metadata_size = ftell(file);
-    if (metadata_size <= 0 || fseek(file, 0, SEEK_SET) < 0) {
-        fclose(file);
-         av_log(NULL, AV_LOG_WARNING,
-             "uniqFEED metadata file %s has invalid size (%ld); using fallback\n",
-             filename, metadata_size);
-        metadata = uFCreateMetadata(NULL, 0);
-        av_free(filename);
-        return metadata;
-    }
-
-    buffer = av_malloc(metadata_size);
-    if (!buffer) {
-         av_log(NULL, AV_LOG_ERROR,
-             "uniqFEED out of memory allocating %ld bytes for metadata from %s\n",
-             metadata_size, filename);
-        fclose(file);
-        av_free(filename);
-        return NULL;
-    }
-
-    if (fread(buffer, 1, metadata_size, file) != (size_t)metadata_size) {
-         av_log(NULL, AV_LOG_WARNING,
-             "uniqFEED short read from metadata file %s; using fallback\n", filename);
-        av_free(buffer);
-        fclose(file);
-        metadata = uFCreateMetadata(NULL, 0);
-        av_free(filename);
-        return metadata;
-    }
-
-    fclose(file);
-    metadata = uFCreateMetadata(buffer, metadata_size);
-    if (!metadata) {
-        av_log(NULL, AV_LOG_ERROR,
-             "uniqFEED failed to create metadata object from file %s (%ld bytes)\n",
-               filename, metadata_size);
-         av_free(buffer);
-    }
-    av_free(filename);
-    return metadata;
-}
-
-static uint64_t count_render_metadata_frames(const char *metadata_dir)
-{
-    FILE *file;
-    uint64_t frame_index = 0;
-
-    while (1) {
-        char filename[4096];
-
-        if (snprintf(filename, sizeof(filename), "%s/md-%06" PRIu64 ".bin",
-                     metadata_dir, frame_index) >= (int)sizeof(filename))
-            break;
-
-        file = fopen(filename, "rb");
-        if (!file)
-            break;
-
-        fclose(file);
-        frame_index++;
-    }
-
-    return frame_index;
-    av_log(NULL, AV_LOG_DEBUG,
-        "uniqFEED metadata scanner: found %" PRIu64 " metadata files in %s\n",
-        frame_index, metadata_dir);
-    return frame_index;
-}
-
-static int create_frame_from_render_image(const UfImage *image, const AVFrame *source_frame,
-                                          AVFrame **processed_frame)
-{
-    struct SwsContext *scale_ctx;
-    UfImage *rgb_image = NULL;
-    AVFrame *frame;
-    uint8_t *rgb_data;
-    uint32_t width;
-    uint32_t height;
-    uint32_t stride;
-    UfImageFormat format;
-    int ret;
-
-    ret = uFGetImageFormat(image, &format);
-    if (ret != 0)
-        return AVERROR_EXTERNAL;
-
-    if (format != R8G8B8_UINT) {
-        rgb_image = uFConvertImage(image, R8G8B8_UINT);
-        if (!rgb_image)
-            return AVERROR_EXTERNAL;
-        image = rgb_image;
-        av_log(NULL, AV_LOG_DEBUG,
-               "uniqFEED converted output image format %d to R8G8B8_UINT\n", format);
-    }
-
-    if (uFGetImageSize(image, &width, &height) != 0 ||
-        uFGetImageHostBuffer(image, (void **)&rgb_data) != 0 ||
-        uFGetImageStride(image, &stride) != 0 || !rgb_data)
-        av_log(NULL, AV_LOG_ERROR,
-               "uniqFEED failed to query processed image properties\n");
-        return AVERROR_EXTERNAL;
-
-    if ((int)width != source_frame->width || (int)height != source_frame->height) {
-        av_log(NULL, AV_LOG_ERROR,
-               "uniqFEED output image resolution mismatch: expected %dx%d, got %ux%u\n",
-               source_frame->width, source_frame->height, width, height);
-        ret = AVERROR(EINVAL);
-        goto end;
-    }
-
-    frame = av_frame_alloc();
-    if (!frame)
-        return AVERROR(ENOMEM);
-
-    frame->format = source_frame->format;
-    frame->width = source_frame->width;
-    frame->height = source_frame->height;
-
-    ret = av_frame_get_buffer(frame, 32);
-    if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR,
-               "uniqFEED failed to allocate output frame buffer: %s\n",
-               av_err2str(ret));
-        av_frame_free(&frame);
-        return ret;
-    }
-
-    scale_ctx = sws_getContext(source_frame->width, source_frame->height, AV_PIX_FMT_RGB24,
-                               source_frame->width, source_frame->height, source_frame->format,
-                               SWS_BILINEAR, NULL, NULL, NULL);
-    if (!scale_ctx) {
-        av_log(NULL, AV_LOG_ERROR,
-               "uniqFEED failed to create scale context for output format conversion\n");
-        av_frame_free(&frame);
-        ret = AVERROR(EINVAL);
-        goto end;
-    }
-
-    {
-        const uint8_t *src_data[4] = { rgb_data, NULL, NULL, NULL };
-        int src_linesize[4] = { (int)stride, 0, 0, 0 };
-
-        sws_scale(scale_ctx, src_data, src_linesize, 0, source_frame->height,
-                  frame->data, frame->linesize);
-    }
-
-    sws_freeContext(scale_ctx);
-
-    ret = av_frame_copy_props(frame, source_frame);
-    if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR,
-               "uniqFEED failed to copy frame properties: %s\n",
-               av_err2str(ret));
-        av_frame_free(&frame);
-        goto end;
-    }
-
-    frame->pts = source_frame->pts;
-    frame->best_effort_timestamp = source_frame->best_effort_timestamp;
-    *processed_frame = frame;
-    ret = 0;
-
-end:
-    if (rgb_image)
-        uFDestroyImage(rgb_image);
-    return ret;
-}
-
-static int process_video_frame_with_renderlib(AVFrame *frame, unsigned int stream_index,
-                                              AVFrame **processed_frame)
-{
-    const UfImage *feed_image;
-    UfFeeds *feeds = NULL;
-    UfImage *input_image = NULL;
-    UfMetadata *metadata = NULL;
-    int ret;
-    uint64_t frame_index;
-    int64_t render_tid;
-
-    *processed_frame = NULL;
-
-    if (frame->width != (int)renderlib_ctx.expected_width ||
-        frame->height != (int)renderlib_ctx.expected_height) {
-        av_log(NULL, AV_LOG_ERROR,
-               "uniqFEED requires filtered video frames to be exactly %dx%d; got %dx%d on stream #%u\n",
-               renderlib_ctx.expected_width, renderlib_ctx.expected_height,
-               frame->width, frame->height, stream_index);
-        return AVERROR(EINVAL);
-    }
-
-    frame_index = renderlib_ctx.video_frame_count[stream_index]++;
-    render_tid = frame->pts == AV_NOPTS_VALUE ? (int64_t)frame_index : frame->pts;
-
-    if (renderlib_ctx.metadata_frame_count > 0 &&
-        frame_index >= renderlib_ctx.metadata_frame_count) {
-        av_log(NULL, AV_LOG_WARNING,
-               "uniqFEED metadata exhausted at frame %" PRIu64 " on stream #%u; available sample metadata covers frames [0, %" PRIu64 "]\n",
-               frame_index, stream_index, renderlib_ctx.metadata_frame_count - 1);
-        if (renderlib_ctx.passthrough_on_failure) {
-            renderlib_ctx.render_disabled = 1;
-            return 0;
-        }
-        return AVERROR(EINVAL);
-    }
-
-    input_image = create_render_image_from_frame(frame);
-    if (!input_image) {
-        ret = AVERROR_EXTERNAL;
-        goto end;
-    }
-
-    metadata = load_render_metadata(renderlib_ctx.metadata_dir, frame_index);
-    if (!metadata) {
-        ret = AVERROR_EXTERNAL;
-        goto end;
-    }
-
-    feeds = uFRenderFeeds(renderlib_ctx.ctx, metadata, render_tid, input_image);
-    if (!feeds) {
-        ret = 0;
-        goto end;
-    }
-
-    feed_image = uFGetFeedsImage(feeds, 0);
-    if (!feed_image) {
-        ret = AVERROR_EXTERNAL;
-        goto end;
-    }
-    /* Query available feeds (multi-feed support) */
-    uint32_t feed_count;
-    int64_t tid;
-    if (uFGetFeedsProperties(feeds, &feed_count, &tid) == 0) {
-        if (feed_count > 1) {
-            av_log(NULL, AV_LOG_DEBUG,
-                   "uniqFEED produced %u output feed(s) for frame %" PRId64 " (tid=%" PRId64 ")\n",
-                   feed_count, frame_index, tid);
-        }
-        if (renderlib_ctx.output_feed_counts)
-            renderlib_ctx.output_feed_counts[stream_index] = feed_count;
-    }
-
-    /* For now, process first feed (future: support multiple outputs) */
-    feed_image = uFGetFeedsImage(feeds, 0);
-    if (!feed_image) {
-        av_log(NULL, AV_LOG_ERROR,
-               "uniqFEED failed to retrieve output feed image for frame %" PRIu64 "\n",
-               frame_index);
-        ret = AVERROR_EXTERNAL;
-        goto end;
-    }
-
-    ret = create_frame_from_render_image(feed_image, frame, processed_frame);
-
-end:
-    if (feeds)
-        uFDestroyFeeds(feeds);
-    if (metadata)
-        uFDestroyMetadata(metadata);
-    if (input_image)
-        uFDestroyImage(input_image);
-    return ret;
-}
-
-static int init_renderlib(int argc, char **argv)
-{
-    if (argc < 5) {
-        av_log(NULL, AV_LOG_ERROR,
-               "Usage: %s <input file> <output file> <project path> <metadata dir>\n",
-               argv[0]);
-        return AVERROR(EINVAL);
-    }
-
-    renderlib_ctx.ctx = uFCreateContext(argv[3]);
-    if (!renderlib_ctx.ctx) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to initialize uniqFEED render context\n");
-        return AVERROR_EXTERNAL;
-    }
-
-    if (uFGetContextResolution(renderlib_ctx.ctx,
-                               &renderlib_ctx.expected_width,
-                               &renderlib_ctx.expected_height) != 0) {
-        av_log(NULL, AV_LOG_ERROR,
-               "Failed to query uniqFEED context resolution\n");
-        uFDestroyContext(renderlib_ctx.ctx);
-        renderlib_ctx.ctx = NULL;
-        return AVERROR_EXTERNAL;
-    }
-
-    if (uFGetContextFramerate(renderlib_ctx.ctx,
-                              &renderlib_ctx.context_nframes,
-                              &renderlib_ctx.context_duration_s) != 0) {
-        av_log(NULL, AV_LOG_WARNING,
-               "Failed to query uniqFEED context frame rate; continuing without it\n");
-        renderlib_ctx.context_nframes = 0;
-        renderlib_ctx.context_duration_s = 0;
-    }
-
-    renderlib_ctx.metadata_dir = argv[4];
-    renderlib_ctx.metadata_frame_count = count_render_metadata_frames(renderlib_ctx.metadata_dir);
-    renderlib_ctx.passthrough_on_failure = env_flag_enabled("UF_RENDERLIB_PASSTHROUGH_ON_FAILURE");
-    renderlib_ctx.render_disabled = 0;
-    renderlib_ctx.video_frame_count = av_calloc(ifmt_ctx->nb_streams,
-                                               sizeof(*renderlib_ctx.video_frame_count));
-    if (!renderlib_ctx.video_frame_count) {
-        uFDestroyContext(renderlib_ctx.ctx);
-        renderlib_ctx.ctx = NULL;
-        return AVERROR(ENOMEM);
-    }
-    
-    /* Allocate feed count tracking for multi-feed support */
-    renderlib_ctx.output_feed_counts = av_calloc(ifmt_ctx->nb_streams,
-                                                 sizeof(*renderlib_ctx.output_feed_counts));
-    if (!renderlib_ctx.output_feed_counts) {
-        av_log(NULL, AV_LOG_ERROR,
-               "uniqFEED failed to allocate feed count tracking\n");
-        av_freep(&renderlib_ctx.video_frame_count);
-        uFDestroyContext(renderlib_ctx.ctx);
-        renderlib_ctx.ctx = NULL;
-        return AVERROR(ENOMEM);
-    }
-
-    if (renderlib_ctx.passthrough_on_failure) {
-        av_log(NULL, AV_LOG_INFO,
-               "uniqFEED: passthrough-on-failure enabled; recoverable errors disable rendering\n");
-    }
-
-    if (renderlib_ctx.context_nframes > 0 && renderlib_ctx.context_duration_s > 0) {
-        av_log(NULL, AV_LOG_INFO,
-               "uniqFEED initialized: resolution=%ux%u framerate=%u/%u fps project=%s\n",
-               renderlib_ctx.expected_width, renderlib_ctx.expected_height,
-               renderlib_ctx.context_nframes, renderlib_ctx.context_duration_s, argv[3]);
-    } else {
-        av_log(NULL, AV_LOG_INFO,
-               "uniqFEED initialized: resolution=%ux%u project=%s\n",
-               renderlib_ctx.expected_width, renderlib_ctx.expected_height, argv[3]);
-    }
-
-    if (renderlib_ctx.metadata_frame_count > 0) {
-        av_log(NULL, AV_LOG_INFO,
-               "uniqFEED: %" PRIu64 " metadata file(s) available in %s\n",
-               renderlib_ctx.metadata_frame_count, renderlib_ctx.metadata_dir);
-    } else {
-        av_log(NULL, AV_LOG_WARNING,
-               "uniqFEED: WARNING - no metadata files found in %s (using fallback)\n",
-               renderlib_ctx.metadata_dir);
-    }
-
-    return 0;
-}
-
-static void free_renderlib(void)
-{
-    av_freep(&renderlib_ctx.video_frame_count);
-    av_freep(&renderlib_ctx.output_feed_counts);
-    if (renderlib_ctx.ctx)
-        uFDestroyContext(renderlib_ctx.ctx);
-    renderlib_ctx.ctx = NULL;
-    renderlib_ctx.metadata_dir = NULL;
-    renderlib_ctx.metadata_frame_count = 0;
-    renderlib_ctx.expected_width = 0;
-    renderlib_ctx.expected_height = 0;
-    renderlib_ctx.context_nframes = 0;
-    renderlib_ctx.context_duration_s = 0;
-    renderlib_ctx.passthrough_on_failure = 0;
-    renderlib_ctx.render_disabled = 0;
+    return av_asprintf("uniqfeed=project_path=%s:passthrough_on_failure=%d",
+                       uniqfeed_cfg.project_path,
+                       uniqfeed_cfg.passthrough_on_failure);
 }
 #endif
 
@@ -950,6 +474,7 @@ end:
 static int init_filters(void)
 {
     const char *filter_spec;
+    char *video_filter_spec = NULL;
     unsigned int i;
     int ret;
     filter_ctx = av_malloc_array(ifmt_ctx->nb_streams, sizeof(*filter_ctx));
@@ -963,14 +488,22 @@ static int init_filters(void)
         if (!(ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO
                 || ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO))
             continue;
-
-
-        if (ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
+        if (ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+#ifdef USE_UF_RENDERLIB
+            video_filter_spec = build_video_filter_spec();
+            if (!video_filter_spec)
+                return AVERROR(ENOMEM);
+            filter_spec = video_filter_spec;
+#else
             filter_spec = "null"; /* passthrough (dummy) filter for video */
-        else
+#endif
+        } else {
             filter_spec = "anull"; /* passthrough (dummy) filter for audio */
+        }
+
         ret = init_filter(&filter_ctx[i], stream_ctx[i].dec_ctx,
                 stream_ctx[i].enc_ctx, filter_spec);
+        av_freep(&video_filter_spec);
         if (ret)
             return ret;
 
@@ -1057,32 +590,7 @@ static int filter_encode_write_frame(AVFrame *frame, unsigned int stream_index)
 
         filter->filtered_frame->time_base = av_buffersink_get_time_base(filter->buffersink_ctx);;
         filter->filtered_frame->pict_type = AV_PICTURE_TYPE_NONE;
-#ifdef USE_UF_RENDERLIB
-        if (ifmt_ctx->streams[stream_index]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
-            !renderlib_ctx.render_disabled) {
-            AVFrame *processed_frame = NULL;
 
-            ret = process_video_frame_with_renderlib(filter->filtered_frame, stream_index,
-                                                     &processed_frame);
-            if (ret < 0) {
-                if (renderlib_ctx.passthrough_on_failure) {
-                    renderlib_ctx.render_disabled = 1;
-                    av_log(NULL, AV_LOG_WARNING,
-                           "uniqFEED render failed on stream #%u: %s; disabling uniqFEED and passing through original frames\n",
-                           stream_index, av_err2str(ret));
-                    ret = 0;
-                } else {
-                    av_frame_unref(filter->filtered_frame);
-                    break;
-                }
-            }
-            if (processed_frame) {
-                av_frame_unref(filter->filtered_frame);
-                av_frame_move_ref(filter->filtered_frame, processed_frame);
-                av_frame_free(&processed_frame);
-            }
-        }
-#endif
         ret = encode_write_frame(stream_index, 0);
         av_frame_unref(filter->filtered_frame);
         if (ret < 0)
@@ -1111,14 +619,14 @@ int main(int argc, char **argv)
 
     if (
 #ifdef USE_UF_RENDERLIB
-        argc != 5
+        argc != 4 && argc != 5
 #else
         argc != 3
 #endif
     ) {
 #ifdef USE_UF_RENDERLIB
         av_log(NULL, AV_LOG_ERROR,
-               "Usage: %s <input file> <output file> <project path> <metadata dir>\n",
+               "Usage: %s <input file> <output file> <project path> [metadata dir]\n",
                argv[0]);
 #else
         av_log(NULL, AV_LOG_ERROR, "Usage: %s <input file> <output file>\n", argv[0]);
@@ -1129,8 +637,9 @@ int main(int argc, char **argv)
     if ((ret = open_input_file(argv[1])) < 0)
         goto end;
 #ifdef USE_UF_RENDERLIB
-    if ((ret = init_renderlib(argc, argv)) < 0)
-        goto end;
+    uniqfeed_cfg.project_path = argv[3];
+    uniqfeed_cfg.metadata_dir = argc >= 5 ? argv[4] : NULL;
+    uniqfeed_cfg.passthrough_on_failure = env_flag_enabled("UF_RENDERLIB_PASSTHROUGH_ON_FAILURE");
 #endif
     if ((ret = open_output_file(argv[2])) < 0)
         goto end;
@@ -1250,9 +759,6 @@ end:
     if (ofmt_ctx && !(ofmt_ctx->oformat->flags & AVFMT_NOFILE))
         avio_closep(&ofmt_ctx->pb);
     avformat_free_context(ofmt_ctx);
-#ifdef USE_UF_RENDERLIB
-    free_renderlib();
-#endif
 
     if (ret < 0)
         av_log(NULL, AV_LOG_ERROR, "Error occurred: %s\n", av_err2str(ret));

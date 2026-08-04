@@ -118,4 +118,13 @@ fi
 
 mv "${new_build_config_file}" "${build_config_file}"
 
-make -j"$(nproc)" doc/examples/transcode
+make -j"$(nproc)" \
+    libavutil/libavutil.so \
+    libswresample/libswresample.so \
+    libswscale/libswscale.so \
+    libavcodec/libavcodec.so \
+    libavformat/libavformat.so
+
+make -j"$(nproc)" \
+    libavfilter/libavfilter.so \
+    doc/examples/transcode

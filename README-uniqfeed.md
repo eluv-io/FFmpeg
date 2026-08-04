@@ -1,6 +1,6 @@
 # uniqFEED Integration Notes
 
-This document describes the example uniqFEED integration added to `doc/examples/transcoding.c`.
+This document describes the example uniqFEED integration added to `doc/examples/transcode.c`.
 
 The goal of the modification is to show how a transcoding pipeline can hand each filtered video frame to the uniqFEED render library, receive a modified image back, and continue normal FFmpeg encode and mux processing.
 
@@ -9,7 +9,7 @@ This is example code, not a finalized production integration.
 
 ## Scope
 
-The uniqFEED changes are intentionally limited to `doc/examples/transcoding.c`.
+The uniqFEED changes are intentionally limited to `doc/examples/transcode.c`.
 
 Current behavior:
 
@@ -32,18 +32,18 @@ Current non-goals:
 
 Primary code location:
 
-- `doc/examples/transcoding.c`
+- `doc/examples/transcode.c`
 
 Important uniqFEED entry points in the example:
 
-- render context state: [doc/examples/transcoding.c](doc/examples/transcoding.c#L129)
-- AVFrame to uniqFEED image conversion: [doc/examples/transcoding.c](doc/examples/transcoding.c#L137)
-- example metadata loading: [doc/examples/transcoding.c](doc/examples/transcoding.c#L181)
-- uniqFEED image back to AVFrame conversion: [doc/examples/transcoding.c](doc/examples/transcoding.c#L242)
-- per-frame uniqFEED processing function: [doc/examples/transcoding.c](doc/examples/transcoding.c#L326)
-- uniqFEED initialization: [doc/examples/transcoding.c](doc/examples/transcoding.c#L377)
-- modern decode loop: [doc/examples/transcoding.c](doc/examples/transcoding.c#L823)
-- filter/encode loop where uniqFEED is invoked: [doc/examples/transcoding.c](doc/examples/transcoding.c#L861)
+- render context state: [doc/examples/transcode.c](doc/examples/transcode.c#L129)
+- AVFrame to uniqFEED image conversion: [doc/examples/transcode.c](doc/examples/transcode.c#L137)
+- example metadata loading: [doc/examples/transcode.c](doc/examples/transcode.c#L181)
+- uniqFEED image back to AVFrame conversion: [doc/examples/transcode.c](doc/examples/transcode.c#L242)
+- per-frame uniqFEED processing function: [doc/examples/transcode.c](doc/examples/transcode.c#L326)
+- uniqFEED initialization: [doc/examples/transcode.c](doc/examples/transcode.c#L377)
+- modern decode loop: [doc/examples/transcode.c](doc/examples/transcode.c#L823)
+- filter/encode loop where uniqFEED is invoked: [doc/examples/transcode.c](doc/examples/transcode.c#L861)
 
 
 ## Build Assumptions
@@ -185,7 +185,7 @@ That script installs the FFmpeg build tools it needs inside the disposable conta
 
 and then builds:
 
-- `doc/examples/transcoding`
+- `doc/examples/transcode`
 
 The helper keeps repeated rebuilds incremental. It only drops existing `*.o` and `*.d` files when the uniqFEED-related build configuration changes, which preserves the stale-dependency workaround without forcing a full rebuild on every invocation.
 
@@ -231,7 +231,7 @@ With the wrapper script:
 tools/uniqfeed-container.sh run input.mp4 output.mp4 /runtime/project /path/to/metadata_dir
 ```
 
-The helper script ensures the uniqFEED shared-library paths are present before launching [doc/examples/transcoding](doc/examples/transcoding).
+The helper script ensures the uniqFEED shared-library paths are present before launching [doc/examples/transcode](doc/examples/transcode).
 
 To open an interactive shell in the same container environment:
 
@@ -244,7 +244,7 @@ tools/uniqfeed-container.sh shell
 
 There are two practical ways to build this example:
 
-1. build FFmpeg in-tree and let the FFmpeg build system build `doc/examples/transcoding`
+1. build FFmpeg in-tree and let the FFmpeg build system build `doc/examples/transcode`
 2. build the examples with the example Makefile approach described in `doc/examples/README`
 
 For this uniqFEED variant, the in-tree build is the most straightforward option.
@@ -254,7 +254,7 @@ For this uniqFEED variant, the in-tree build is the most straightforward option.
 
 The stock FFmpeg examples README says to build FFmpeg first and then run `make examples`. That guidance is in [doc/examples/README](doc/examples/README).
 
-For the uniqFEED-enabled `transcoding` example, configure FFmpeg with the uniqFEED include path, library path, and compile definition added globally.
+For the uniqFEED-enabled `transcode` example, configure FFmpeg with the uniqFEED include path, library path, and compile definition added globally.
 
 A typical flow looks like this:
 
@@ -266,7 +266,7 @@ A typical flow looks like this:
   [your normal FFmpeg configure flags]
 
 make -j$(nproc)
-make doc/examples/transcoding
+make doc/examples/transcode
 ```
 
 Or, if you want all enabled examples:
@@ -277,9 +277,15 @@ make examples
 
 Notes:
 
+<<<<<<< HEAD
 - `transcoding` is an FFmpeg example target listed in [doc/examples/Makefile](doc/examples/Makefile#L21).
 - the main tree includes the examples makefile from [Makefile](Makefile#L98).
 - the `transcoding` example depends on FFmpeg filter/codec/format/util libraries, as declared in `configure`
+=======
+- `transcode` is an FFmpeg example target listed in [doc/examples/Makefile](doc/examples/Makefile#L21).
+- the main tree includes the examples makefile from [Makefile](Makefile#L98).
+- the `transcode` example depends on FFmpeg filter/codec/format/util libraries, as declared in `configure`
+>>>>>>> 74091b9753 (rebase on main, most runtime to libavfilter)
 - this README uses placeholder library names because the exact uniqFEED artifact names are local-build specific
 
 
@@ -295,7 +301,7 @@ If the uniqFEED project is located at `/path/to/tnt-uniqfeed`, the command will 
   [your existing FFmpeg options]
 
 make -j$(nproc)
-make doc/examples/transcoding
+make doc/examples/transcode
 ```
 
 
@@ -318,7 +324,7 @@ Because of that, the in-tree build is usually simpler and less error-prone for t
 When built in-tree, the resulting example binary is generated at:
 
 ```text
-doc/examples/transcoding
+doc/examples/transcode
 ```
 
 That target is produced by the examples build rules in [doc/examples/Makefile](doc/examples/Makefile).
@@ -335,7 +341,7 @@ That target is produced by the examples build rules in [doc/examples/Makefile](d
 - `USE_UF_RENDERLIB` code not compiled in
   The `-DUSE_UF_RENDERLIB` define was not passed in through `--extra-cflags`.
 
-- `doc/examples/transcoding` not built by `make examples`
+- `doc/examples/transcode` not built by `make examples`
   The example target may not be enabled in your configure result, or the tree may need a full rebuild after reconfiguring.
 
 - linker errors for gRPC, Boost, Vulkan, hiredis, or other uniqFEED dependencies on the host
@@ -347,7 +353,7 @@ That target is produced by the examples build rules in [doc/examples/Makefile](d
 When built with uniqFEED enabled, the example usage is:
 
 ```sh
-./transcoding input output project_path metadata_dir
+./transcode input output project_path [metadata_dir]
 ```
 
 Optional runtime behavior can be enabled with:
@@ -361,13 +367,17 @@ Arguments:
 1. `input`
 2. `output`
 3. `project_path`
-4. `metadata_dir`
+4. `metadata_dir` (optional when an external metadata provider is linked)
 
+<<<<<<< HEAD
 The usage string is defined in [doc/examples/transcoding.c](doc/examples/transcoding.c#L958).
+=======
+The usage string is defined in [doc/examples/transcode.c](doc/examples/transcode.c#L958).
+>>>>>>> 74091b9753 (rebase on main, most runtime to libavfilter)
 
 With `UF_RENDERLIB_PASSTHROUGH_ON_FAILURE=1`, the example treats recoverable uniqFEED errors as a signal to disable uniqFEED for the rest of the run and continue encoding the original filtered frames.
 
-The current integration also enforces a hard frame-size guard before calling uniqFEED: the filtered video frame must be exactly `1280x720`. Any other size is rejected before metadata lookup or renderer invocation.
+The current integration enforces a frame-size guard before calling uniqFEED: the filtered video frame must match the active uniqFEED project context resolution returned by `uFGetContextResolution()`. Any other size is rejected before metadata lookup or renderer invocation.
 
 Example with the container wrapper:
 
@@ -394,7 +404,32 @@ The current code uses a per-stream monotonically increasing frame counter, not p
 
 If a metadata file is missing, the example falls back to `uFCreateMetadata(NULL, 0)`, which means uniqFEED receives an empty/default metadata object.
 
+The newer uniqFEED drop also ships structured project metadata JSON files (for example `project/project.json`, `project/scenes.json`, `project/media_composer.json`, and camera-specific JSON files under `project/camera_<uuid>/`). Those JSON files describe static scene/layout data such as zones, clip surfaces, and board geometry. This FFmpeg example does not parse those JSON files directly; it passes `project_path` into `uFCreateContext()`, and uniqFEED loads project data internally.
+
+Per-frame dynamic overlay metadata for this example can now come from either source:
+
+- an external metadata provider callback (recommended path for avpipe integration)
+- `metadata_dir` with `md-XXXXXX.bin` files (legacy/sample fallback path)
+
 This is intentionally simple and is expected to be replaced later by a metadata provider more suitable for production, such as content-fabric object metadata passed in through another consumer.
+
+
+## avpipe Integration Mechanism
+
+The uniqFEED runtime now exposes an optional external metadata-provider ABI in [libavfilter/uf_render_metadata_provider.h](libavfilter/uf_render_metadata_provider.h).
+
+If a linked object (for example from `~/src/avpipe`) defines `uFGetExternalMetadataProviderV1()`, `doc/examples/transcode` will call that provider for per-frame metadata instead of relying only on local `md-XXXXXX.bin` files.
+
+Provider lifecycle:
+
+1. `init(project_path, metadata_dir, provider_opaque)` runs once during uniqFEED initialization.
+2. `get_metadata_blob(frame_index, stream_index, render_tid, filtered_frame, ...)` runs once per filtered video frame.
+3. `release_metadata_blob(...)` is called after each frame metadata blob is consumed.
+4. `close(provider_opaque)` runs during teardown.
+
+If the provider is present but returns an error for a frame, the current logic optionally falls back to file metadata when `metadata_dir` is set.
+
+This gives avpipe a clean insertion point to map its own timeline/object metadata into uniqFEED without changing the core frame-processing path.
 
 
 ## High-Level Architecture
@@ -404,15 +439,14 @@ The modified transcoding pipeline is:
 ```text
 demux
   -> decode
-  -> FFmpeg filter graph
-  -> uniqFEED render step
+  -> FFmpeg filter graph (includes uniqfeed filter)
   -> encode
   -> mux
 ```
 
-The important design decision is that uniqFEED runs after FFmpeg filtering and before encoding.
+The important design decision is that uniqFEED runs as a regular `libavfilter` video filter.
 
-That means uniqFEED behaves like a final per-frame image transform on the filtered video frame, rather than operating on raw decoded input frames.
+That keeps runtime processing reusable for both `transcode` and other callers (for example, avpipe) that can build an FFmpeg filter graph.
 
 
 ## Control Flow
@@ -420,21 +454,27 @@ That means uniqFEED behaves like a final per-frame image transform on the filter
 At a high level, the frame flow is:
 
 1. `decode_filter_encode_write_frame()` submits packets to the decoder and receives decoded frames.
-2. Each decoded frame is pushed into the existing FFmpeg filter graph.
-3. `filter_encode_write_frame()` pulls filtered frames from the filter graph.
-4. For video streams, `process_video_frame_with_renderlib()` is called on each filtered frame.
-5. The returned processed frame replaces the original filtered frame.
-6. The processed frame is encoded and then muxed.
+2. `init_filters()` builds a filter chain that includes `uniqfeed=...` for video streams.
+3. Each decoded frame is pushed into that filter graph.
+4. `filter_encode_write_frame()` pulls already-processed frames from the filter graph.
+5. The filtered frame is encoded and then muxed.
 
+<<<<<<< HEAD
 The decode path is in [doc/examples/transcoding.c](doc/examples/transcoding.c#L823), and the uniqFEED hook is in [doc/examples/transcoding.c](doc/examples/transcoding.c#L901).
+=======
+The graph construction is in [doc/examples/transcode.c](doc/examples/transcode.c), and the runtime filter implementation is in [libavfilter/vf_uniqfeed.c](libavfilter/vf_uniqfeed.c).
+>>>>>>> 74091b9753 (rebase on main, most runtime to libavfilter)
 
 
 ## In-Memory Image Exchange
 
-The first version of this idea used a file-based PNG round trip.
+The uniqFEED filter performs in-memory conversion:
 
-The current example no longer does that.
+- Converts the incoming `AVFrame` into an RGB `UfImage`.
+- Renders with `uFRenderFeeds(...)`.
+- Converts the selected output feed image back into an `AVFrame`.
 
+<<<<<<< HEAD
 Instead:
 
 - `create_render_image_from_frame()` converts the FFmpeg `AVFrame` into RGB24 and writes the pixels directly into a `UfImage` host buffer.
@@ -447,35 +487,46 @@ The conversion helpers are located at:
 
 - [doc/examples/transcoding.c](doc/examples/transcoding.c#L137)
 - [doc/examples/transcoding.c](doc/examples/transcoding.c#L242)
+=======
+The conversion helpers and render path are in [libavfilter/vf_uniqfeed.c](libavfilter/vf_uniqfeed.c).
+>>>>>>> 74091b9753 (rebase on main, most runtime to libavfilter)
 
 
 ## uniqFEED-Specific Flow
 
-For each filtered video frame:
+For each frame entering the `uniqfeed` filter:
 
 1. Create a `UfImage` in `R8G8B8_UINT` format.
 2. Convert the FFmpeg frame into RGB24 and populate the uniqFEED host buffer.
-3. Load example metadata for the current frame index.
+3. Load metadata either from the external provider ABI or from `md-XXXXXX.bin` files.
 4. Call `uFRenderFeeds(ctx, metadata, tid, input_image)`.
-5. If uniqFEED returns no feeds yet, treat that as no output frame replacement for that call.
+5. If uniqFEED returns no feeds yet, pass the original frame through unchanged.
 6. Retrieve feed index `0`.
 7. Convert the returned image back into an FFmpeg frame with the original timing properties.
-8. Encode the resulting frame.
+8. Forward the resulting frame to downstream filters/encoder.
 
+<<<<<<< HEAD
 The main uniqFEED work happens in [doc/examples/transcoding.c](doc/examples/transcoding.c#L326).
+=======
+The main uniqFEED work happens in [libavfilter/vf_uniqfeed.c](libavfilter/vf_uniqfeed.c).
+>>>>>>> 74091b9753 (rebase on main, most runtime to libavfilter)
 
 
-## Why the Hook Is in `filter_encode_write_frame`
+## Why Runtime Is In `libavfilter`
 
-uniqFEED was placed in `filter_encode_write_frame()` instead of earlier in the decode path so it can operate on the actual frame that is about to be encoded.
+uniqFEED runtime logic moved out of `doc/examples/transcode.c` and into `libavfilter/vf_uniqfeed.c` so it is reusable and composable.
 
 That matters because:
 
-- FFmpeg filters may resize, crop, or reformat the image before encode.
-- uniqFEED is intended to behave like a content-aware image augmentation stage.
-- placing it after filtering ensures it sees the same visual frame the encoder will receive.
+- `transcode` remains glue code that builds a filtergraph.
+- avpipe (and other integrations) can use the same runtime path without copying logic.
+- uniqFEED stays in the standard FFmpeg filter lifecycle (`init`, frame processing, `uninit`).
 
+<<<<<<< HEAD
 The hook site is [doc/examples/transcoding.c](doc/examples/transcoding.c#L861).
+=======
+The filtergraph hook is in [doc/examples/transcode.c](doc/examples/transcode.c), and the runtime implementation is in [libavfilter/vf_uniqfeed.c](libavfilter/vf_uniqfeed.c).
+>>>>>>> 74091b9753 (rebase on main, most runtime to libavfilter)
 
 
 ## Current Limitations
@@ -483,10 +534,9 @@ The hook site is [doc/examples/transcoding.c](doc/examples/transcoding.c#L861).
 - Only video streams are sent through uniqFEED.
 - Only feed index `0` is used from the returned `UfFeeds` set.
 - Metadata selection is frame-counter-based.
-- There is no abstraction layer yet for alternate metadata sources.
-- There is no dedicated FFmpeg filter implementation in `libavfilter`.
+- The provider ABI is optional; without a provider, metadata falls back to `metadata_dir` files.
 - The example assumes uniqFEED accepts RGB input and returns an image that can be converted back to the source frame format.
-- The current bundled uniqFEED project is guarded to only run on filtered video frames that are exactly `1280x720`.
+- The current bundled uniqFEED project is guarded to only run on filtered video frames that match the uniqFEED context resolution.
 - `UF_RENDERLIB_PASSTHROUGH_ON_FAILURE=1` only helps for recoverable errors returned through the uniqFEED API. It cannot recover if the uniqFEED library aborts the process internally, such as the observed `Matting.cpp` fail-fast path.
 
 
@@ -502,7 +552,7 @@ If this example evolves toward production use, the most likely next steps are:
 
 ## Summary
 
-The uniqFEED changes in `doc/examples/transcoding.c` demonstrate a minimal but realistic frame-processing pattern:
+The uniqFEED changes in `doc/examples/transcode.c` demonstrate a minimal but realistic frame-processing pattern:
 
 - decode with modern send/receive APIs
 - run normal FFmpeg filters
