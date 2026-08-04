@@ -113,7 +113,7 @@ cd /path/to/tnt-uniqfeed
 docker build -t uf_render_interface:ubuntu_22 .
 ```
 
-If you want the FFmpeg container workflow to use a sibling checkout such as `/path/to/tnt-uniqfeed` instead of the runtime bundled at `/runtime`, set `UF_RUNTIME_ROOT` to that absolute path before invoking the wrapper script. The script will bind-mount that path into the container and build/run against its `include` and `lib` directories.
+If you want the FFmpeg container workflow to use a sibling checkout such as `/home/jan/src/tnt-uniqfeed` instead of the runtime bundled at `/runtime`, set `UF_RUNTIME_ROOT` to that absolute path before invoking the wrapper script. The script will bind-mount that path into the container and build/run against its `include` and `lib` directories.
 
 If your uniqFEED runtime depends on additional shared-library directories outside that tree, set `UF_RUNTIME_EXTRA_LIB_DIRS` to a colon-separated list of directories and the helper scripts will append them to `LD_LIBRARY_PATH` during configure, build, and run.
 
@@ -277,26 +277,20 @@ make examples
 
 Notes:
 
-<<<<<<< HEAD
-- `transcoding` is an FFmpeg example target listed in [doc/examples/Makefile](doc/examples/Makefile#L21).
-- the main tree includes the examples makefile from [Makefile](Makefile#L98).
-- the `transcoding` example depends on FFmpeg filter/codec/format/util libraries, as declared in `configure`
-=======
 - `transcode` is an FFmpeg example target listed in [doc/examples/Makefile](doc/examples/Makefile#L21).
 - the main tree includes the examples makefile from [Makefile](Makefile#L98).
 - the `transcode` example depends on FFmpeg filter/codec/format/util libraries, as declared in `configure`
->>>>>>> 74091b9753 (rebase on main, most runtime to libavfilter)
 - this README uses placeholder library names because the exact uniqFEED artifact names are local-build specific
 
 
 ## Example Build Command
 
-If the uniqFEED project is located at `/path/to/tnt-uniqfeed`, the command will likely look conceptually like this:
+If the uniqFEED project is located at `/home/jan/ELV/tnt-uniqfeed`, the command will likely look conceptually like this:
 
 ```sh
 ./configure \
-  --extra-cflags="-DUSE_UF_RENDERLIB -I/path/to/tnt-uniqfeed/include" \
-  --extra-ldflags="-L/path/to/tnt-uniqfeed/lib -L/path/to/tnt-uniqfeed/lib/uf -L/path/to/tnt-uniqfeed/lib/3rdparty" \
+  --extra-cflags="-DUSE_UF_RENDERLIB -I/home/jan/ELV/tnt-uniqfeed/include" \
+  --extra-ldflags="-L/home/jan/ELV/tnt-uniqfeed/lib -L/home/jan/ELV/tnt-uniqfeed/lib/uf -L/home/jan/ELV/tnt-uniqfeed/lib/3rdparty" \
   --extra-libs="-luf-renderlib" \
   [your existing FFmpeg options]
 
@@ -369,11 +363,7 @@ Arguments:
 3. `project_path`
 4. `metadata_dir` (optional when an external metadata provider is linked)
 
-<<<<<<< HEAD
-The usage string is defined in [doc/examples/transcoding.c](doc/examples/transcoding.c#L958).
-=======
 The usage string is defined in [doc/examples/transcode.c](doc/examples/transcode.c#L958).
->>>>>>> 74091b9753 (rebase on main, most runtime to libavfilter)
 
 With `UF_RENDERLIB_PASSTHROUGH_ON_FAILURE=1`, the example treats recoverable uniqFEED errors as a signal to disable uniqFEED for the rest of the run and continue encoding the original filtered frames.
 
@@ -459,11 +449,7 @@ At a high level, the frame flow is:
 4. `filter_encode_write_frame()` pulls already-processed frames from the filter graph.
 5. The filtered frame is encoded and then muxed.
 
-<<<<<<< HEAD
-The decode path is in [doc/examples/transcoding.c](doc/examples/transcoding.c#L823), and the uniqFEED hook is in [doc/examples/transcoding.c](doc/examples/transcoding.c#L901).
-=======
 The graph construction is in [doc/examples/transcode.c](doc/examples/transcode.c), and the runtime filter implementation is in [libavfilter/vf_uniqfeed.c](libavfilter/vf_uniqfeed.c).
->>>>>>> 74091b9753 (rebase on main, most runtime to libavfilter)
 
 
 ## In-Memory Image Exchange
@@ -474,22 +460,7 @@ The uniqFEED filter performs in-memory conversion:
 - Renders with `uFRenderFeeds(...)`.
 - Converts the selected output feed image back into an `AVFrame`.
 
-<<<<<<< HEAD
-Instead:
-
-- `create_render_image_from_frame()` converts the FFmpeg `AVFrame` into RGB24 and writes the pixels directly into a `UfImage` host buffer.
-- uniqFEED renders against that in-memory image.
-- `create_frame_from_render_image()` converts the returned uniqFEED image back into an `AVFrame` using `libswscale`.
-
-This reduces overhead and keeps the image handoff local to process memory.
-
-The conversion helpers are located at:
-
-- [doc/examples/transcoding.c](doc/examples/transcoding.c#L137)
-- [doc/examples/transcoding.c](doc/examples/transcoding.c#L242)
-=======
 The conversion helpers and render path are in [libavfilter/vf_uniqfeed.c](libavfilter/vf_uniqfeed.c).
->>>>>>> 74091b9753 (rebase on main, most runtime to libavfilter)
 
 
 ## uniqFEED-Specific Flow
@@ -505,11 +476,7 @@ For each frame entering the `uniqfeed` filter:
 7. Convert the returned image back into an FFmpeg frame with the original timing properties.
 8. Forward the resulting frame to downstream filters/encoder.
 
-<<<<<<< HEAD
-The main uniqFEED work happens in [doc/examples/transcoding.c](doc/examples/transcoding.c#L326).
-=======
 The main uniqFEED work happens in [libavfilter/vf_uniqfeed.c](libavfilter/vf_uniqfeed.c).
->>>>>>> 74091b9753 (rebase on main, most runtime to libavfilter)
 
 
 ## Why Runtime Is In `libavfilter`
@@ -522,11 +489,7 @@ That matters because:
 - avpipe (and other integrations) can use the same runtime path without copying logic.
 - uniqFEED stays in the standard FFmpeg filter lifecycle (`init`, frame processing, `uninit`).
 
-<<<<<<< HEAD
-The hook site is [doc/examples/transcoding.c](doc/examples/transcoding.c#L861).
-=======
 The filtergraph hook is in [doc/examples/transcode.c](doc/examples/transcode.c), and the runtime implementation is in [libavfilter/vf_uniqfeed.c](libavfilter/vf_uniqfeed.c).
->>>>>>> 74091b9753 (rebase on main, most runtime to libavfilter)
 
 
 ## Current Limitations
