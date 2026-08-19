@@ -1190,6 +1190,18 @@ static int mov_write_glbl_tag(AVIOContext *pb, MOVTrack *track)
     return 8 + track->extradata_size[track->last_stsd_index];
 }
 
+/* Write the AC-4 config box (dac4) verbatim from the track extradata (the box
+ * carried through from the source by mov_read_dac4). AC-4 config is opaque
+ * passthrough, so unlike dec3 there is nothing to reconstruct. */
+static int mov_write_dac4_tag(AVIOContext *pb, MOVTrack *track)
+{
+    avio_wb32(pb, track->extradata_size[track->last_stsd_index] + 8);
+    ffio_wfourcc(pb, "dac4");
+    avio_write(pb, track->extradata[track->last_stsd_index],
+               track->extradata_size[track->last_stsd_index]);
+    return 8 + track->extradata_size[track->last_stsd_index];
+}
+
 /**
  * Compute flags for 'lpcm' tag.
  * See CoreAudioTypes and AudioStreamBasicDescription at Apple.
@@ -1468,6 +1480,8 @@ static int mov_write_audio_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContex
         ret = mov_write_ac3_tag(s, pb, track);
     else if (track->par->codec_id == AV_CODEC_ID_EAC3)
         ret = mov_write_eac3_tag(s, pb, track);
+    else if (track->par->codec_id == AV_CODEC_ID_AC4)
+        ret = mov_write_dac4_tag(pb, track);
     else if (track->par->codec_id == AV_CODEC_ID_ALAC)
         ret = mov_write_extradata_tag(pb, track);
     else if (track->par->codec_id == AV_CODEC_ID_WMAPRO)
@@ -8816,6 +8830,7 @@ static const AVCodecTag codec_mp4_tags[] = {
     { AV_CODEC_ID_MP2,             MKTAG('m', 'p', '4', 'a') },
     { AV_CODEC_ID_AC3,             MKTAG('a', 'c', '-', '3') },
     { AV_CODEC_ID_EAC3,            MKTAG('e', 'c', '-', '3') },
+    { AV_CODEC_ID_AC4,             MKTAG('a', 'c', '-', '4') },
     { AV_CODEC_ID_DTS,             MKTAG('m', 'p', '4', 'a') },
     { AV_CODEC_ID_TRUEHD,          MKTAG('m', 'l', 'p', 'a') },
     { AV_CODEC_ID_FLAC,            MKTAG('f', 'L', 'a', 'C') },

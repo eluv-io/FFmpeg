@@ -2482,6 +2482,23 @@ static int mov_read_glbl(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     return 0;
 }
 
+/* Read the AC-4 config box (dac4) verbatim into extradata so it passes through
+ * on stream copy. AC-4 config is opaque; we only carry the box, never parse
+ * ac4_dsi(). Mirrors mov_read_glbl minus its codec-specific special-casing. */
+static int mov_read_dac4(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+{
+    AVStream *st;
+
+    st = get_curr_st(c);
+    if (!st)
+        return 0;
+
+    if ((uint64_t)atom.size > (1<<30))
+        return AVERROR_INVALIDDATA;
+
+    return ff_get_extradata(c->fc, st->codecpar, pb, atom.size);
+}
+
 static int mov_read_dvc1(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 {
     AVStream *st;
@@ -9466,6 +9483,7 @@ static const MOVParseTableEntry mov_default_parse_table[] = {
 { MKTAG('e','s','d','s'), mov_read_esds },
 { MKTAG('d','a','c','3'), mov_read_dac3 }, /* AC-3 info */
 { MKTAG('d','e','c','3'), mov_read_dec3 }, /* EAC-3 info */
+{ MKTAG('d','a','c','4'), mov_read_dac4 }, /* AC-4 info */
 { MKTAG('d','d','t','s'), mov_read_ddts }, /* DTS audio descriptor */
 { MKTAG('w','i','d','e'), mov_read_wide }, /* place holder */
 { MKTAG('w','f','e','x'), mov_read_wfex },
