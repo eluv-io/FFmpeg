@@ -4,11 +4,18 @@
 
 #include "config_components.h"
 
+#include <errno.h>
 #include <inttypes.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <netdb.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include "libavutil/error.h"
+#include "libavutil/avstring.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
@@ -40,6 +47,7 @@ typedef struct UniqfeedContext {
     const AVClass *class;
     char *project_path;
     char *metadata_dir;
+    char *viewer_profile;
     int passthrough_on_failure;
 
 #ifdef USE_UF_RENDERLIB
@@ -60,6 +68,7 @@ typedef struct UniqfeedContext {
 static const AVOption uniqfeed_options[] = {
     { "project_path", "Path to uniqFEED project directory", OFFSET(project_path), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, FLAGS },
     { "metadata_dir", "Optional metadata directory with md-XXXXXX.bin files", OFFSET(metadata_dir), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, FLAGS },
+    { "viewer_profile", "Viewer profile string passed to uFCreateContext (e.g. 'session=1')", OFFSET(viewer_profile), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, FLAGS },
     { "passthrough_on_failure", "Disable uniqFEED and pass through frames on recoverable errors", OFFSET(passthrough_on_failure), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, FLAGS },
     { NULL }
 };
@@ -67,6 +76,228 @@ static const AVOption uniqfeed_options[] = {
 AVFILTER_DEFINE_CLASS(uniqfeed);
 
 #ifdef USE_UF_RENDERLIB
+#define UNIQFEED_SERVER_TIMEOUT_MS 1000
+
+static int uniqfeed_probe_server_url(AVFilterContext *ctx, const char *url)
+{
+    const char *scheme_end;
+    const char *host_start;
+    const char *host_end;
+    const char *path_start;
+    const char *port_start = NULL;
+    const char *default_port;
+    char *host = NULL;
+    char *port = NULL;
+    struct addrinfo hints = { 0 };
+    struct addrinfo *addr_list = NULL;
+    struct addrinfo *addr;
+    int ret;
+
+    scheme_end = strstr(url, "://");
+    if (!scheme_end)
+        return 0;
+
+    if (!av_strstart(url, "http://", &host_start) &&
+        !av_strstart(url, "https://", &host_start))
+        return 0;
+
+    default_port = !strncmp(url, "https://", 8) ? "443" : "80";
+    path_start = strchr(host_start, '/');
+    host_end = path_start ? path_start : host_start + strlen(host_start);
+    if (host_start == host_end)
+        return 0;
+
+    if (*host_start == '[') {
+        const char *ipv6_end = memchr(host_start, ']', host_end - host_start);
+
+        if (!ipv6_end)
+            return 0;
+
+        host_start++;
+        host_end = ipv6_end;
+        if (ipv6_end + 1 < (path_start ? path_start : url + strlen(url)) && ipv6_end[1] == ':')
+            port_start = ipv6_end + 2;
+    } else {
+        const char *colon = memchr(host_start, ':', host_end - host_start);
+
+        if (colon) {
+            host_end = colon;
+            port_start = colon + 1;
+        }
+    }
+
+    host = av_memdup(host_start, host_end - host_start + 1);
+    if (!host)
+        return AVERROR(ENOMEM);
+    host[host_end - host_start] = '\0';
+
+    if (port_start && *port_start) {
+        const char *port_end = path_start ? path_start : url + strlen(url);
+
+        port = av_memdup(port_start, port_end - port_start + 1);
+        if (!port) {
+            av_free(host);
+            return AVERROR(ENOMEM);
+        }
+        port[port_end - port_start] = '\0';
+    } else {
+        port = av_strdup(default_port);
+        if (!port) {
+            av_free(host);
+            return AVERROR(ENOMEM);
+        }
+    }
+
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_family = AF_UNSPEC;
+
+    ret = getaddrinfo(host, port, &hints, &addr_list);
+    if (ret != 0) {
+        av_log(ctx, AV_LOG_ERROR,
+               "uniqfeed preflight failed resolving %s for %s: %s\n",
+               host, url, gai_strerror(ret));
+        ret = AVERROR_EXTERNAL;
+        goto end;
+    }
+
+    ret = AVERROR(ECONNREFUSED);
+    for (addr = addr_list; addr; addr = addr->ai_next) {
+        struct pollfd poll_fd;
+        int fd;
+        int connect_ret;
+        int socket_error = 0;
+        socklen_t socket_error_len = sizeof(socket_error);
+
+        fd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+        if (fd < 0)
+            continue;
+
+        if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK) < 0) {
+            close(fd);
+            continue;
+        }
+
+        connect_ret = connect(fd, addr->ai_addr, addr->ai_addrlen);
+        if (connect_ret == 0) {
+            close(fd);
+            ret = 0;
+            break;
+        }
+
+        if (errno != EINPROGRESS) {
+            close(fd);
+            continue;
+        }
+
+        poll_fd.fd = fd;
+        poll_fd.events = POLLOUT;
+        poll_fd.revents = 0;
+
+        connect_ret = poll(&poll_fd, 1, UNIQFEED_SERVER_TIMEOUT_MS);
+        if (connect_ret > 0 &&
+            getsockopt(fd, SOL_SOCKET, SO_ERROR, &socket_error, &socket_error_len) == 0 &&
+            socket_error == 0) {
+            close(fd);
+            ret = 0;
+            break;
+        }
+
+        if (connect_ret == 0)
+            ret = AVERROR(ETIMEDOUT);
+        else if (socket_error != 0)
+            ret = AVERROR(socket_error);
+
+        close(fd);
+    }
+
+    if (ret < 0) {
+        av_log(ctx, AV_LOG_ERROR,
+               "uniqfeed preflight failed connecting to %s; VAST server is unavailable for project media_library.json\n",
+               url);
+        ret = AVERROR_EXTERNAL;
+    }
+
+end:
+    freeaddrinfo(addr_list);
+    av_free(port);
+    av_free(host);
+    return ret;
+}
+
+static int uniqfeed_preflight_project_servers(AVFilterContext *ctx, const char *project_path)
+{
+    static const char key[] = "\"server_url\"";
+    char media_library_path[4096];
+    FILE *file;
+    char *buffer = NULL;
+    long file_size;
+    char *cursor;
+    int ret = 0;
+
+    if (snprintf(media_library_path, sizeof(media_library_path), "%s/media_library.json",
+                 project_path) >= (int)sizeof(media_library_path)) {
+        av_log(ctx, AV_LOG_WARNING, "uniqfeed preflight skipped: project path is too long\n");
+        return 0;
+    }
+
+    file = fopen(media_library_path, "rb");
+    if (!file)
+        return 0;
+
+    if (fseek(file, 0, SEEK_END) < 0 || (file_size = ftell(file)) < 0 ||
+        fseek(file, 0, SEEK_SET) < 0) {
+        fclose(file);
+        return 0;
+    }
+
+    buffer = av_malloc(file_size + 1);
+    if (!buffer) {
+        fclose(file);
+        return AVERROR(ENOMEM);
+    }
+
+    if (fread(buffer, 1, file_size, file) != (size_t)file_size) {
+        av_free(buffer);
+        fclose(file);
+        return 0;
+    }
+    buffer[file_size] = '\0';
+    fclose(file);
+
+    cursor = buffer;
+    while ((cursor = strstr(cursor, key))) {
+        char *value_start;
+        char *value_end;
+        char saved_char;
+
+        cursor += sizeof(key) - 1;
+        value_start = strchr(cursor, ':');
+        if (!value_start)
+            break;
+
+        value_start = strchr(value_start, '"');
+        if (!value_start)
+            break;
+        value_start++;
+
+        value_end = strchr(value_start, '"');
+        if (!value_end)
+            break;
+
+        saved_char = *value_end;
+        *value_end = '\0';
+        ret = uniqfeed_probe_server_url(ctx, value_start);
+        *value_end = saved_char;
+        if (ret < 0)
+            break;
+
+        cursor = value_end + 1;
+    }
+
+    av_free(buffer);
+    return ret;
+}
+
 static uint64_t count_render_metadata_frames(const char *metadata_dir)
 {
     FILE *file;
@@ -133,60 +364,37 @@ static UfMetadata *load_render_metadata_from_provider(UniqfeedContext *s,
     return metadata;
 }
 
-static UfMetadata *load_render_metadata_from_files(const char *metadata_dir, uint64_t frame_index)
+static UfMetadata *load_render_metadata_from_file(const char *filename)
 {
     FILE *file;
     UfMetadata *metadata;
     long metadata_size;
-    char *filename;
     uint8_t *buffer = NULL;
-    int filename_len;
-
-    if (!metadata_dir)
-        return uFCreateMetadata(NULL, 0);
-
-    filename_len = snprintf(NULL, 0, "%s/md-%06" PRIu64 ".bin",
-                            metadata_dir, frame_index);
-    if (filename_len < 0)
-        return uFCreateMetadata(NULL, 0);
-
-    filename = av_malloc(filename_len + 1);
-    if (!filename)
-        return NULL;
-
-    snprintf(filename, filename_len + 1, "%s/md-%06" PRIu64 ".bin",
-             metadata_dir, frame_index);
 
     file = fopen(filename, "rb");
-    if (!file) {
-        av_free(filename);
+    if (!file)
         return uFCreateMetadata(NULL, 0);
-    }
 
     if (fseek(file, 0, SEEK_END) < 0) {
         fclose(file);
-        av_free(filename);
         return uFCreateMetadata(NULL, 0);
     }
 
     metadata_size = ftell(file);
     if (metadata_size <= 0 || fseek(file, 0, SEEK_SET) < 0) {
         fclose(file);
-        av_free(filename);
         return uFCreateMetadata(NULL, 0);
     }
 
     buffer = av_malloc(metadata_size);
     if (!buffer) {
         fclose(file);
-        av_free(filename);
         return NULL;
     }
 
     if (fread(buffer, 1, metadata_size, file) != (size_t)metadata_size) {
         av_free(buffer);
         fclose(file);
-        av_free(filename);
         return uFCreateMetadata(NULL, 0);
     }
 
@@ -194,9 +402,37 @@ static UfMetadata *load_render_metadata_from_files(const char *metadata_dir, uin
     metadata = uFCreateMetadata(buffer, metadata_size);
     if (!metadata)
         av_free(buffer);
-    av_free(filename);
 
     return metadata;
+}
+
+static UfMetadata *load_render_metadata_from_files(const char *metadata_dir,
+                                                   uint64_t frame_index,
+                                                   int64_t render_tid)
+{
+    char filename[4096];
+    int filename_len;
+    UfMetadata *metadata;
+
+    if (!metadata_dir)
+        return uFCreateMetadata(NULL, 0);
+
+    if (render_tid != AV_NOPTS_VALUE) {
+        filename_len = snprintf(filename, sizeof(filename), "%s/md-%" PRId64 ".bin",
+                                metadata_dir, render_tid);
+        if (filename_len > 0 && filename_len < (int)sizeof(filename)) {
+            metadata = load_render_metadata_from_file(filename);
+            if (metadata)
+                return metadata;
+        }
+    }
+
+    filename_len = snprintf(filename, sizeof(filename), "%s/md-%06" PRIu64 ".bin",
+                            metadata_dir, frame_index);
+    if (filename_len < 0 || filename_len >= (int)sizeof(filename))
+        return uFCreateMetadata(NULL, 0);
+
+    return load_render_metadata_from_file(filename);
 }
 
 static UfImage *create_render_image_from_frame(const AVFrame *frame)
@@ -351,9 +587,9 @@ static int uniqfeed_process_frame(AVFilterContext *ctx, AVFrame *frame, AVFrame 
     if (s->metadata_provider) {
         metadata = load_render_metadata_from_provider(s, frame_index, render_tid, frame);
         if (!metadata && s->metadata_dir)
-            metadata = load_render_metadata_from_files(s->metadata_dir, frame_index);
+            metadata = load_render_metadata_from_files(s->metadata_dir, frame_index, render_tid);
     } else {
-        metadata = load_render_metadata_from_files(s->metadata_dir, frame_index);
+        metadata = load_render_metadata_from_files(s->metadata_dir, frame_index, render_tid);
     }
 
     if (!metadata) {
@@ -391,13 +627,28 @@ static av_cold int uniqfeed_init(AVFilterContext *ctx)
 {
 #ifdef USE_UF_RENDERLIB
     UniqfeedContext *s = ctx->priv;
+    int ret;
 
     if (!s->project_path || !*s->project_path) {
         av_log(ctx, AV_LOG_ERROR, "project_path must be set\n");
         return AVERROR(EINVAL);
     }
 
-    s->ctx = uFCreateContext(s->project_path);
+    ret = uniqfeed_preflight_project_servers(ctx, s->project_path);
+    if (ret < 0)
+        return ret;
+
+    /* The renderlib exports uFCreateContext with C linkage taking
+     * (projectPath, userProfile); the C header only declares the one-arg form,
+     * so call the real two-arg symbol via a function-pointer cast. userProfile
+     * (e.g. "session=1") is forwarded in ad server queries. */
+    {
+        UfContext *(*create_ctx)(const char *, const char *) =
+            (UfContext *(*)(const char *, const char *))uFCreateContext;
+        const char *profile =
+            (s->viewer_profile && *s->viewer_profile) ? s->viewer_profile : NULL;
+        s->ctx = create_ctx(s->project_path, profile);
+    }
     if (!s->ctx) {
         av_log(ctx, AV_LOG_ERROR, "failed to initialize uniqFEED context\n");
         return AVERROR_EXTERNAL;
@@ -420,7 +671,10 @@ static av_cold int uniqfeed_init(AVFilterContext *ctx)
         int provider_ret = s->metadata_provider->init(s->project_path,
                                                       s->metadata_dir,
                                                       &s->metadata_provider_opaque);
-        if (provider_ret < 0) {
+        if (provider_ret == AVERROR(ENOSYS)) {
+            s->metadata_provider = NULL;
+            s->metadata_provider_opaque = NULL;
+        } else if (provider_ret < 0) {
             av_log(ctx, AV_LOG_ERROR, "metadata provider init failed: %d\n", provider_ret);
             return AVERROR_EXTERNAL;
         }
