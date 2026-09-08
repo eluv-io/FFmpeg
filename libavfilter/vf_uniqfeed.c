@@ -453,7 +453,7 @@ static UfImage *create_render_image_from_frame(const AVFrame *frame)
     }
 
     scale_ctx = sws_getContext(frame->width, frame->height, frame->format,
-                               frame->width, frame->height, AV_PIX_FMT_RGB24,
+                               frame->width, frame->height, AV_PIX_FMT_UYVY422,
                                SWS_BILINEAR, NULL, NULL, NULL);
     if (!scale_ctx) {
         uFDestroyImage(image);
