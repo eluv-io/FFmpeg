@@ -490,9 +490,9 @@ static int create_frame_from_render_image(const UfImage *image,
     if (ret != 0)
         return AVERROR_EXTERNAL;
 
-    if (format != R8G8B8_UINT) {
+    if (format != U8Y8V8Y8_422_UINT) {
         av_log(NULL, AV_LOG_ERROR, "uniqfeed render image format %d is not supported, expected %d\n",
-               format, R8G8B8_UINT);
+               format, U8Y8V8Y8_422_UINT);
         return AVERROR(EINVAL);
     }
 
