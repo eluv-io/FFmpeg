@@ -460,7 +460,7 @@ static UfImage *create_render_image_from_frame(const AVFrame *frame)
     }
 
     scale_ctx = sws_getContext(frame->width, frame->height, frame->format,
-                               frame->width, frame->height, AV_PIX_FMT_UYVY422,
+                               frame->width, frame->height, AV_PIX_FMT_RGB24,
                                SWS_BILINEAR, NULL, NULL, NULL);
     if (!scale_ctx) {
         uFDestroyImage(image);
@@ -743,7 +743,10 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     if (s->render_disabled)
         return ff_filter_frame(ctx->outputs[0], frame);
 
+    int64_t start_us = av_gettime_relative();
     ret = uniqfeed_process_frame(ctx, frame, &processed_frame);
+    av_log(NULL, AV_LOG_DEBUG,
+        "uniqfeed process frame took %.3f ms\n", (av_gettime_relative() - start_us) / 1000.0);
     if (ret < 0) {
         if (s->passthrough_on_failure) {
             s->render_disabled = 1;
