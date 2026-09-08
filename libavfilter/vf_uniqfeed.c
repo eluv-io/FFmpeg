@@ -18,6 +18,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
+#include "libavutil/time.h"
 #include "avfilter.h"
 #include "filters.h"
 #include "video.h"
@@ -334,10 +335,12 @@ static UfMetadata *load_render_metadata_from_provider(UniqfeedContext *s,
     size_t metadata_blob_size = 0;
     UfMetadata *metadata;
     int ret;
+    int64_t start_us;
 
     if (!provider || !provider->get_metadata_blob)
         return NULL;
 
+    start_us = av_gettime_relative();
     ret = provider->get_metadata_blob(frame_index,
                                       0,
                                       render_tid,
@@ -345,6 +348,10 @@ static UfMetadata *load_render_metadata_from_provider(UniqfeedContext *s,
                                       &metadata_blob,
                                       &metadata_blob_size,
                                       s->metadata_provider_opaque);
+    av_log(NULL, AV_LOG_DEBUG,
+           "uniqfeed metadata provider get_metadata_blob frame=%" PRIu64 " render_tid=%" PRId64
+           " took %.3f ms size=%zu\n",
+           frame_index, render_tid, (av_gettime_relative() - start_us) / 1000.0, metadata_blob_size);
     if (ret < 0)
         return NULL;
 
@@ -453,7 +460,7 @@ static UfImage *create_render_image_from_frame(const AVFrame *frame)
     }
 
     scale_ctx = sws_getContext(frame->width, frame->height, frame->format,
-                               frame->width, frame->height, AV_PIX_FMT_RGB24,
+                               frame->width, frame->height, AV_PIX_FMT_UYVY422,
                                SWS_BILINEAR, NULL, NULL, NULL);
     if (!scale_ctx) {
         uFDestroyImage(image);
@@ -485,6 +492,7 @@ static int create_frame_from_render_image(const UfImage *image,
     uint32_t stride;
     UfImageFormat format;
     int ret;
+    int64_t start_us;
 
     ret = uFGetImageFormat(image, &format);
     if (ret != 0)
@@ -531,6 +539,7 @@ static int create_frame_from_render_image(const UfImage *image,
         goto end;
     }
 
+    start_us = av_gettime_relative();
     {
         const uint8_t *src_data[4] = { rgb_data, NULL, NULL, NULL };
         int src_linesize[4] = { (int)stride, 0, 0, 0 };
@@ -538,6 +547,9 @@ static int create_frame_from_render_image(const UfImage *image,
         sws_scale(scale_ctx, src_data, src_linesize, 0, source_frame->height,
                   frame->data, frame->linesize);
     }
+    av_log(NULL, AV_LOG_DEBUG,
+           "uniqfeed frame conversion sws_scale took %.3f ms\n",
+           (av_gettime_relative() - start_us) / 1000.0);
 
     sws_freeContext(scale_ctx);
 
@@ -566,6 +578,7 @@ static int uniqfeed_process_frame(AVFilterContext *ctx, AVFrame *frame, AVFrame 
     UfMetadata *metadata = NULL;
     const UfImage *feed_image = NULL;
     int ret;
+    int64_t start_us;
     uint64_t frame_index = s->frame_index++;
     int64_t render_tid = frame->pts == AV_NOPTS_VALUE ? (int64_t)frame_index : frame->pts;
 
@@ -596,7 +609,11 @@ static int uniqfeed_process_frame(AVFilterContext *ctx, AVFrame *frame, AVFrame 
         goto end;
     }
 
+    start_us = av_gettime_relative();
     feeds = uFRenderFeeds(s->ctx, metadata, render_tid, input_image);
+    av_log(NULL, AV_LOG_DEBUG,
+           "uniqfeed uFRenderFeeds frame=%" PRIu64 " render_tid=%" PRId64 " took %.3f ms\n",
+           frame_index, render_tid, (av_gettime_relative() - start_us) / 1000.0);
     if (!feeds) {
         ret = 0;
         goto end;
@@ -608,7 +625,12 @@ static int uniqfeed_process_frame(AVFilterContext *ctx, AVFrame *frame, AVFrame 
         goto end;
     }
 
+    start_us = av_gettime_relative();
     ret = create_frame_from_render_image(feed_image, frame, processed_frame);
+    av_log(NULL, AV_LOG_DEBUG,
+           "uniqfeed create_frame_from_render_image frame=%" PRIu64 " render_tid=%" PRId64
+           " took %.3f ms\n",
+           frame_index, render_tid, (av_gettime_relative() - start_us) / 1000.0);
 
 end:
     if (feeds)
