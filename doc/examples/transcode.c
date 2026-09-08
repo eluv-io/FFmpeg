@@ -34,10 +34,17 @@
 #include <libavformat/avformat.h>
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
+#include <libavutil/avstring.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/imgutils.h>
 #include <libavutil/mem.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
+
+#include <inttypes.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
 static AVFormatContext *ifmt_ctx;
 static AVFormatContext *ofmt_ctx;
@@ -58,6 +65,48 @@ typedef struct StreamContext {
     AVFrame *dec_frame;
 } StreamContext;
 static StreamContext *stream_ctx;
+
+#ifdef USE_UF_RENDERLIB
+typedef struct UniqfeedConfig {
+    const char *project_path;
+    const char *metadata_dir;
+    int passthrough_on_failure;
+} UniqfeedConfig;
+
+static UniqfeedConfig uniqfeed_cfg;
+
+static int env_flag_enabled(const char *name)
+{
+    const char *value = getenv(name);
+
+    if (!value || !*value)
+        return 0;
+
+    if (!strcmp(value, "0") || !strcmp(value, "false") || !strcmp(value, "FALSE") ||
+        !strcmp(value, "no") || !strcmp(value, "NO") ||
+        !strcmp(value, "off") || !strcmp(value, "OFF"))
+        return 0;
+
+    return 1;
+}
+
+static char *build_video_filter_spec(void)
+{
+    if (!uniqfeed_cfg.project_path)
+        return av_asprintf("null");
+
+    if (uniqfeed_cfg.metadata_dir) {
+        return av_asprintf("uniqfeed=project_path=%s:metadata_dir=%s:passthrough_on_failure=%d",
+                           uniqfeed_cfg.project_path,
+                           uniqfeed_cfg.metadata_dir,
+                           uniqfeed_cfg.passthrough_on_failure);
+    }
+
+    return av_asprintf("uniqfeed=project_path=%s:passthrough_on_failure=%d",
+                       uniqfeed_cfg.project_path,
+                       uniqfeed_cfg.passthrough_on_failure);
+}
+#endif
 
 static int open_input_file(const char *filename)
 {
@@ -425,6 +474,7 @@ end:
 static int init_filters(void)
 {
     const char *filter_spec;
+    char *video_filter_spec = NULL;
     unsigned int i;
     int ret;
     filter_ctx = av_malloc_array(ifmt_ctx->nb_streams, sizeof(*filter_ctx));
@@ -438,14 +488,22 @@ static int init_filters(void)
         if (!(ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO
                 || ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO))
             continue;
-
-
-        if (ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
+        if (ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+#ifdef USE_UF_RENDERLIB
+            video_filter_spec = build_video_filter_spec();
+            if (!video_filter_spec)
+                return AVERROR(ENOMEM);
+            filter_spec = video_filter_spec;
+#else
             filter_spec = "null"; /* passthrough (dummy) filter for video */
-        else
+#endif
+        } else {
             filter_spec = "anull"; /* passthrough (dummy) filter for audio */
+        }
+
         ret = init_filter(&filter_ctx[i], stream_ctx[i].dec_ctx,
                 stream_ctx[i].enc_ctx, filter_spec);
+        av_freep(&video_filter_spec);
         if (ret)
             return ret;
 
@@ -532,6 +590,7 @@ static int filter_encode_write_frame(AVFrame *frame, unsigned int stream_index)
 
         filter->filtered_frame->time_base = av_buffersink_get_time_base(filter->buffersink_ctx);;
         filter->filtered_frame->pict_type = AV_PICTURE_TYPE_NONE;
+
         ret = encode_write_frame(stream_index, 0);
         av_frame_unref(filter->filtered_frame);
         if (ret < 0)
@@ -558,13 +617,30 @@ int main(int argc, char **argv)
     unsigned int stream_index;
     unsigned int i;
 
-    if (argc != 3) {
+    if (
+#ifdef USE_UF_RENDERLIB
+        argc != 4 && argc != 5
+#else
+        argc != 3
+#endif
+    ) {
+#ifdef USE_UF_RENDERLIB
+        av_log(NULL, AV_LOG_ERROR,
+               "Usage: %s <input file> <output file> <project path> [metadata dir]\n",
+               argv[0]);
+#else
         av_log(NULL, AV_LOG_ERROR, "Usage: %s <input file> <output file>\n", argv[0]);
+#endif
         return 1;
     }
 
     if ((ret = open_input_file(argv[1])) < 0)
         goto end;
+#ifdef USE_UF_RENDERLIB
+    uniqfeed_cfg.project_path = argv[3];
+    uniqfeed_cfg.metadata_dir = argc >= 5 ? argv[4] : NULL;
+    uniqfeed_cfg.passthrough_on_failure = env_flag_enabled("UF_RENDERLIB_PASSTHROUGH_ON_FAILURE");
+#endif
     if ((ret = open_output_file(argv[2])) < 0)
         goto end;
     if ((ret = init_filters()) < 0)
